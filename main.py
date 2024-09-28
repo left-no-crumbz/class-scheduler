@@ -54,6 +54,14 @@ class YearLevel(IntEnum):
     FOURTH = 4
 
 
+class Day(IntEnum):
+    MONDAY = 1
+    TUESDAY = 2
+    WEDNESDAY = 3
+    THURSDAY = 4
+    FRIDAY = 5
+
+
 class Instructors:
     def __init__(self, name: str) -> None:
         self.name = name
@@ -113,11 +121,10 @@ class Subject:
         return self.duration
 
     def __str__(self) -> str:
-        instructors_np = np.array(self.instructors)
-        to_str = np.vectorize(lambda instructor: str(instructor))
-        to_str(instructors_np)
-
-        return f"Subject: {self.name}, Type: {self.subject_type.name}, Instructors: [{", ".join(to_str(instructors_np))}], Duration: {self.duration}"
+        instructors_str = ", ".join(
+            instructor.get_name() for instructor in self.instructors
+        )
+        return f"Subject: {self.name}, Type: {self.subject_type.name}, Instructors: [{instructors_str}], Duration: {self.duration}"
 
 
 class Department:
@@ -136,15 +143,93 @@ class Department:
         return self.subjects
 
     def __str__(self) -> str:
-        return (
-            f"Prefix: {self.prefix}, Offered Subjects Per Year Level: {self.subjects}"
-        )
+        str_dict = {
+            k: [subject.get_subject_name() for subject in v]
+            for k, v in self.subjects.items()
+        }
+        return f"Prefix: {self.prefix}, Offered Subjects Per Year Level: [{str_dict}]"
+
+
+class Block:
+    def __init__(
+        self,
+        year_level: YearLevel,
+        dept: Department,
+        num_student: int,
+    ) -> None:
+        self.year_level = year_level
+        self.dept = dept
+        self.subjects = self.get_subjects(year_level)
+        self.num_students = num_student
+        self.block_num = self.generate_block_num(year_level.value)
+
+    counters = {}
+
+    @classmethod
+    def generate_block_num(cls, year_level: int) -> int:
+        if year_level not in cls.counters:
+            cls.counters[year_level] = 1
+        else:
+            cls.counters[year_level] += 1
+        return int(f"{year_level}{cls.counters[year_level]:02d}")
+
+    def get_year_level(self) -> YearLevel:
+        return self.year_level
+
+    def get_dept(self) -> Department:
+        return self.dept
+
+    def get_subjects(self, year_level: YearLevel) -> list[Subject]:
+        return self.dept.get_dept_subjects()[year_level]
+
+    def get_num_students(self) -> int:
+        return self.num_students
+
+    def get_block_num(self) -> int:
+        return self.block_num
+
+
+class TimeSlot:
+    def __init__(
+        self, day: Day, start_time: timedelta, end_time: timedelta, buffer: timedelta
+    ) -> None:
+        self.day = day
+        self.start_time = start_time
+        self.end_time = end_time
+        self.buffer = buffer  # The buffer after each subject
+
+    def get_day(self) -> Day:
+        return self.day
+
+    def get_start_time(self) -> timedelta:
+        return self.start_time
+
+    def get_end_time(self) -> timedelta:
+        return self.end_time
+
+    def get_buffer(self) -> timedelta:
+        return self.buffer
+
+
+class Schedule:
+    def __init__(self, blocks: list[Block], rooms: list[Room]) -> None:
+        self.blocks = np.array(blocks)
+        self.rooms = np.array(rooms)
+        self.assignments = []
+        self.generate_random_schedule()
+
+    def generate_random_schedule(self):
+        for block in self.blocks:
+            for subject in block.subjects:
+                print(subject)
 
 
 if __name__ == "__main__":
     maam_mags = Instructors("Ma'am Avigail Magbag")
     maam_jehan = Instructors("Ma'am Jehan")
     maam_caro = Instructors("Ma'am Caro")
+    sir_uly = Instructors("Sir Uly")
+    maam_lou = Instructors("Ma'am Lou")
 
     # TODO: Attach the duration to the SubjectType
     LOGPROG_LECTURE = Subject(
@@ -160,12 +245,35 @@ if __name__ == "__main__":
         "OOP", [maam_caro], SubjectType.BOTH, timedelta(hours=1, minutes=30)
     )
     OOP_LAB = Subject("OOP", [maam_caro], SubjectType.BOTH, timedelta(hours=3))
+
+    ATF = Subject("ADET", [sir_uly], SubjectType.LAB, timedelta(hours=3))
+
+    ATF = Subject("ATF", [sir_uly], SubjectType.LECTURE, timedelta(hours=2))
+
+    IMODSIM = Subject("IMODSIM", [maam_lou], SubjectType.LECTURE, timedelta(hours=2))
+
     dept = Department(
         "CS",
         {
             YearLevel.FIRST: [LOGPROG_LECTURE, LOGPROG_LAB, PHCI],
             YearLevel.SECOND: [OOP_LAB, OOP_LECTURE],
+            YearLevel.THIRD: [ATF, IMODSIM],
         },
     )
 
-    print(str(OOP_LECTURE))
+    ROOMS = [
+        ["SJH-503", 45, RoomType.LECTURE],
+        ["SJH-504", 45, RoomType.LAB],
+        ["SJH-505", 45, RoomType.LECTURE],
+    ]
+
+    block1 = Block(YearLevel.THIRD, dept, 45)
+    block2 = Block(YearLevel.THIRD, dept, 45)
+    block3 = Block(YearLevel.THIRD, dept, 45)
+
+    rooms = [
+        Room(room_num, capacity, room_type) for room_num, capacity, room_type in ROOMS
+    ]
+    sched = Schedule([block1, block2, block3], rooms)
+
+    print(Schedule)
