@@ -24,7 +24,7 @@
 #    meeting in a week, and Lecture room in the second week or vice versa.
 
 
-from datetime import timedelta
+from datetime import datetime, time, timedelta
 from enum import Enum, IntEnum
 
 import numpy as np
@@ -211,17 +211,73 @@ class TimeSlot:
         return self.buffer
 
 
+# Schedule is the representation of the genome
 class Schedule:
     def __init__(self, blocks: list[Block], rooms: list[Room]) -> None:
-        self.blocks = np.array(blocks)
-        self.rooms = np.array(rooms)
+        self.blocks = np.array(blocks, dtype=object)
+        self.rooms = np.array(rooms, dtype=object)
         self.assignments = []
         self.generate_random_schedule()
 
+    # the function to generate new solutions
     def generate_random_schedule(self):
+        # Create a Random Number Generator
+        rng = np.random.default_rng()
+
+        #  Calculate the total number of subjects
+        block_subjects = np.array([len(block.subjects) for block in self.blocks])
+        total_subjects = np.sum(block_subjects)
+
+        # Calculate random rooms and days in bulk
+        random_rooms = rng.choice(self.rooms, total_subjects)
+        random_days = rng.choice(list(Day), total_subjects)
+
+        EARLIEST_START = time(7, 0)
+        LATEST_END = time(21, 0)
+
         for block in self.blocks:
-            for subject in block.subjects:
-                print(subject)
+            for i, subject in enumerate(block.subjects):
+                # create a room from an array of random rooms
+                room = random_rooms[i]
+
+                # choose a day from an array of random days
+                day = random_days[i]
+
+                # generate a random minute, highest is 14 hours
+                # 14 hours is the span from EARLIEST_START (7AM) to LATEST_END (9PM)
+                random_minutes = rng.integers(0, 14 * 60)
+
+                # generate a start time
+                start_time = (
+                    datetime.combine(datetime.min, EARLIEST_START)
+                    + timedelta(minutes=float(random_minutes))
+                ).time()
+
+                # generate an end time
+                end_time = (
+                    datetime.combine(datetime.min, start_time) + subject.duration
+                ).time()
+
+                # adjust the end time if its past 9pm
+                if end_time > LATEST_END:
+                    end_time = LATEST_END
+                    start_time = (
+                        datetime.combine(datetime.min, LATEST_END) - subject.duration
+                    ).time()
+
+                # Convert the times into timedelta
+                start_timedelta = timedelta(
+                    hours=start_time.hour, minutes=start_time.minute
+                )
+                end_timedelta = timedelta(hours=end_time.hour, minutes=end_time.minute)
+
+                time_slot = TimeSlot(
+                    day, start_timedelta, end_timedelta, buffer=timedelta(0)
+                )
+                self.assignments.append((block, subject, room, time_slot))
+
+    def calculate_fitness(self):
+        pass
 
 
 if __name__ == "__main__":
