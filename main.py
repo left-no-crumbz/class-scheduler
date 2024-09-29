@@ -24,6 +24,7 @@
 #    meeting in a week, and Lecture room in the second week or vice versa.
 
 
+import time as t
 from datetime import datetime, time, timedelta
 from enum import Enum, IntEnum
 
@@ -321,8 +322,54 @@ class Schedule:
             if conflicts > max_allowed_conflicts:
                 return 0
         normalized_conflicts = conflicts / total_assignments
-        print(1 / (1 + normalized_conflicts))
+        # print(1 / (1 + normalized_conflicts))
         return 1 / (1 + normalized_conflicts)  # fitness
+
+
+def create_schedule(blocks, rooms):
+    return Schedule(blocks, rooms)
+
+
+class GeneticAlgorithm:
+    def __init__(
+        self,
+        population_size: int,
+        mutation_rate: float,
+        blocks: list[Block],
+        rooms: list[Room],
+        fitness_limit=1.00,
+    ) -> None:
+        self.population_size = population_size
+        self.mutation_rate = mutation_rate
+        self.blocks = blocks
+        self.rooms = rooms
+        self.population = self.generate_population()
+        self.vblock = np.array(self.blocks)
+        self.vroom = np.array(self.rooms)
+        self.vpopulation = np.array(self.population)
+        self.fitness_limit = fitness_limit
+        self.vectorized_fitness_func = np.frompyfunc(
+            lambda s: s.calculate_fitness(), 1, 1
+        )
+        self.parent = self.select_parents()
+
+    def generate_population(self) -> list[Schedule]:
+        start_time = t.time()  # Start timing
+
+        population = [
+            Schedule(self.blocks, self.rooms) for _ in range(self.population_size)
+        ]
+
+        end_time = t.time()  # End timing
+        print(f"Time taken to generate population: {end_time - start_time} seconds")
+        return population
+
+    def select_parents(self):
+        fitness_list = np.array(
+            self.vectorized_fitness_func(self.population), dtype=np.float64
+        )
+        top_parent = np.argmax(fitness_list)
+        return top_parent
 
 
 if __name__ == "__main__":
@@ -376,5 +423,12 @@ if __name__ == "__main__":
         Room(room_num, capacity, room_type) for room_num, capacity, room_type in ROOMS
     ]
     sched = Schedule([block1, block2, block3], rooms)
+
+    ga = GeneticAlgorithm(
+        population_size=100,
+        mutation_rate=0.2,
+        blocks=[block1, block2, block3],
+        rooms=rooms,
+    )
 
     print(Schedule)
