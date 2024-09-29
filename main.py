@@ -281,12 +281,19 @@ class Schedule:
     def calculate_fitness(self):
         conflicts = 0
         total_assignments = len(self.assignments)
+        max_allowed_conflicts = total_assignments * 0.6
 
         # unpack the values
         blocks = np.array([assignment[0] for assignment in self.assignments])
         subjects = np.array([assignment[1] for assignment in self.assignments])
         rooms = np.array([assignment[2] for assignment in self.assignments])
         time_slots = np.array([assignment[3] for assignment in self.assignments])
+
+        # precompute values
+        instructor_sets = np.array(
+            [set(subject.get_instructors()) for subject in subjects]
+        )
+        days = np.array([ts.get_day() for ts in time_slots])
 
         # Helper function to check if two time ranges overlap
         def time_overlap(time1: TimeSlot, time2: TimeSlot) -> bool:
@@ -297,9 +304,7 @@ class Schedule:
         for i in range(total_assignments):
             for j in range(i + 1, total_assignments):
                 # Check for day and time conflicts
-                if time_slots[i].get_day() == time_slots[j].get_day() and time_overlap(
-                    time_slots[i], time_slots[j]
-                ):
+                if days[i] == days[j] and time_overlap(time_slots[i], time_slots[j]):
                     conflicts += 1
 
                 # Check for room conflicts
@@ -307,17 +312,16 @@ class Schedule:
                     conflicts += 1
 
                 # Check for instructor conflicts
-                instructor_i = set(subjects[i].get_instructors())
-                instructor_j = set(subjects[j].get_instructors())
-                if not instructor_i.isdisjoint(instructor_j):
+                if not instructor_sets[i].isdisjoint(instructor_sets[j]):
                     conflicts += 1
 
                 # Check for block conflicts
                 if blocks[i] == blocks[j]:
                     conflicts += 1
+            if conflicts > max_allowed_conflicts:
+                return 0
         normalized_conflicts = conflicts / total_assignments
-
-        # print(1 / (1 + normalized_conflicts))
+        print(1 / (1 + normalized_conflicts))
         return 1 / (1 + normalized_conflicts)  # fitness
 
 
