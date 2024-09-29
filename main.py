@@ -29,18 +29,19 @@ from enum import Enum, IntEnum
 
 import numpy as np
 
-
-class RoomType(Enum):
-    LECTURE = 1
-    LAB = 2
-
-
 # TODO: Add a subject type that is Specialized, General Ed, etc.
 # pure lecture: 1 hr 30 mins
 # lab: 3 hours
 # lecture ng lab: 2 hours
 # I guess we can do:
 # If subjectType == BOTH then it could appear only once
+
+
+class RoomType(Enum):
+    LECTURE = 1
+    LAB = 2
+
+
 class SubjectType(Enum):
     LECTURE = 1
     LAB = 2
@@ -218,6 +219,7 @@ class Schedule:
         self.rooms = np.array(rooms, dtype=object)
         self.assignments = []
         self.generate_random_schedule()
+        self.calculate_fitness()
 
     # the function to generate new solutions
     def generate_random_schedule(self):
@@ -277,7 +279,46 @@ class Schedule:
                 self.assignments.append((block, subject, room, time_slot))
 
     def calculate_fitness(self):
-        pass
+        conflicts = 0
+        total_assignments = len(self.assignments)
+
+        # unpack the values
+        blocks = np.array([assignment[0] for assignment in self.assignments])
+        subjects = np.array([assignment[1] for assignment in self.assignments])
+        rooms = np.array([assignment[2] for assignment in self.assignments])
+        time_slots = np.array([assignment[3] for assignment in self.assignments])
+
+        # Helper function to check if two time ranges overlap
+        def time_overlap(time1: TimeSlot, time2: TimeSlot) -> bool:
+            return (
+                time1.start_time < time2.end_time and time2.start_time < time1.end_time
+            )
+
+        for i in range(total_assignments):
+            for j in range(i + 1, total_assignments):
+                # Check for day and time conflicts
+                if time_slots[i].get_day() == time_slots[j].get_day() and time_overlap(
+                    time_slots[i], time_slots[j]
+                ):
+                    conflicts += 1
+
+                # Check for room conflicts
+                if rooms[i] == rooms[j]:
+                    conflicts += 1
+
+                # Check for instructor conflicts
+                instructor_i = set(subjects[i].get_instructors())
+                instructor_j = set(subjects[j].get_instructors())
+                if not instructor_i.isdisjoint(instructor_j):
+                    conflicts += 1
+
+                # Check for block conflicts
+                if blocks[i] == blocks[j]:
+                    conflicts += 1
+        normalized_conflicts = conflicts / total_assignments
+
+        # print(1 / (1 + normalized_conflicts))
+        return 1 / (1 + normalized_conflicts)  # fitness
 
 
 if __name__ == "__main__":
