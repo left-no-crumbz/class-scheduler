@@ -30,13 +30,94 @@ from datetime import datetime, timedelta
 from enum import Enum, IntEnum
 from typing import List
 
-import numpy as np
+from PIL import Image, ImageDraw, ImageFont
 from tabulate import tabulate
 
 #  TODO:
 # [ ] - implement room types
 # [ ] - implement additional time constraints
 # [ ] - print the table wherein each class would have their own printed schedule
+
+
+def generate_visual_schedule(schedule, block, filename="class_schedule.png"):
+    # Set up the image
+    width, height = 1200, 900
+    image = Image.new("RGB", (width, height), color="white")
+    draw = ImageDraw.Draw(image)
+
+    # Try to load Arial font, fall back to default if not available
+    try:
+        font = ImageFont.truetype("arial.ttf", 12)
+        title_font = ImageFont.truetype("arial.ttf", 24)
+    except IOError:
+        font = ImageFont.load_default()
+        title_font = ImageFont.load_default()
+
+    # Define colors
+    colors = ["#FFA07A", "#98FB98", "#87CEFA", "#DDA0DD", "#F0E68C"]
+
+    # Draw title
+    title = f"Class Schedule for {block.get_block_dept().get_dept_prefix()}-{block.get_block_number()}"
+    draw.text((20, 20), title, font=title_font, fill="black")
+
+    # Define grid
+    days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
+    times = [f"{h:02d}:00" for h in range(7, 22)]  # 7 AM to 9 PM
+    cell_width = (width - 100) // len(days)
+    cell_height = (height - 100) // (
+        len(times) * 2
+    )  # Divide each hour into two 30-minute slots
+
+    # Draw grid
+    for i, day in enumerate(days):
+        draw.text((100 + i * cell_width + 5, 60), day, font=font, fill="black")
+        for j, time in enumerate(times):
+            draw.text((20, 100 + j * cell_height * 2), time, font=font, fill="black")
+            draw.line(
+                [(100, 80 + j * cell_height * 2), (width, 80 + j * cell_height * 2)],
+                fill="black",
+            )
+
+    for i in range(len(days) + 1):
+        draw.line(
+            [(100 + i * cell_width, 80), (100 + i * cell_width, height)], fill="black"
+        )
+
+    # Plot classes
+    for day in schedule:
+        day_index = days.index(day.name.capitalize())
+        for start_time, end_time, subject, room in schedule[day]:
+            start_minutes = start_time.hour * 60 + start_time.minute - 7 * 60
+            end_minutes = end_time.hour * 60 + end_time.minute - 7 * 60
+            if end_minutes <= start_minutes:  # Handle classes ending after midnight
+                end_minutes = 14 * 60  # Set to 9 PM
+
+            start_y = 80 + (start_minutes * cell_height) // 30
+            end_y = 80 + (end_minutes * cell_height) // 30
+
+            color = random.choice(colors)
+            draw.rectangle(
+                [
+                    100 + day_index * cell_width,
+                    start_y,
+                    100 + (day_index + 1) * cell_width,
+                    end_y,
+                ],
+                fill=color,
+                outline="black",
+            )
+
+            text = f"{subject.get_subject_name()}\n{room.get_room_num()}\n{start_time.strftime('%I:%M %p')}-{end_time.strftime('%I:%M %p')}"
+            draw.text(
+                (105 + day_index * cell_width, start_y + 5),
+                text,
+                font=font,
+                fill="black",
+            )
+
+    # Save the image
+    image.save(filename)
+    print(f"Schedule image saved as {filename}")
 
 
 class RoomType(Enum):
@@ -104,10 +185,6 @@ class Subject:
 class Department:
     def __init__(self, prefix: str, subjects: list[Subject]) -> None:
         self._prefix = prefix  # CS, WD, NA, EMC, CYB
-
-        # Offered subjects by each department
-        # i.e., DASALGO, ADMATHS for CS
-        # ANAGEOM for WD, etc
         self._subjects = subjects
 
     def get_dept_prefix(self) -> str:
@@ -123,18 +200,8 @@ class Block:
     ) -> None:
         self._number = number  # 303, 102, 202
         self._dept = dept  # dept.prefix i.e., CS,
-
-        # This is slightly different from what subjects a department offers.
-        # This is because a class can have a variety of subjects (i.e, Gen Ed, etc)
-        # This refers to the list of subjects that a class is taking.
         self._subjects = subjects
-
-        # The number students in a block.
-        # A room can only accomodate one block per time slot.
-        # We are putting an assumption that the # of students in a block
-        # will always fill and fit in a room.
         self._num_students = num_students
-
         self._room = None
         self._instructor = None
 
@@ -160,8 +227,6 @@ class Block:
         return f"${self._dept.get_dept_prefix()}-${self._number}, ${self._subjects}, ${self._room.get_room_num()}, ${self._instructor.get_name()}"  # type: ignore
 
 
-# TODO: This should support minutes as well instead of full hours
-# TODO: This should be in 12-hour format
 class TimeSlot:
     def __init__(self, day: Day, start_time: datetime, end_time: datetime):
         self._day = day
@@ -188,18 +253,29 @@ class Schedule:
             for subject in block.get_block_subjects():
                 room = random.choice(self.rooms)
 
-                # Generate a random start time between 7:00 AM and 9:00 PM
+                # Generate a random start time between 7:00 AM and 9:00 PM, aligned to 5-minute intervals
                 start_time = datetime.combine(
                     datetime.today(), datetime.min.time()
-                ) + timedelta(hours=7, minutes=random.randint(0, 14 * 60))
+                ) + timedelta(
+                    hours=7,
+                    minutes=random.randint(0, 14 * 12)
+                    * 5,  # 14 hours * 12 5-minute intervals
+                )
 
                 end_time = start_time + subject.get_subject_duration()
 
                 # If end time is after 9:00 PM, adjust start time
                 if end_time.hour >= 21:
+                    minutes_duration = (
+                        subject.get_subject_duration().total_seconds() / 60
+                    )
                     start_time = (
                         datetime.combine(datetime.today(), datetime.min.time())
-                        + timedelta(hours=21)
+                        + timedelta(
+                            hours=21,
+                            minutes=-((-minutes_duration) // 5)
+                            * 5,  # Round up to nearest 5 minutes
+                        )
                         - subject.get_subject_duration()
                     )
                     end_time = start_time + subject.get_subject_duration()
@@ -308,16 +384,18 @@ class Schedule:
         return fitness
 
     def print_block_schedule(self, block: Block):
-        schedule = {day: {} for day in Day}
+        schedule = {day: [] for day in Day}
 
         for b, subject, room, time_slot in self.assignments:
             if b == block:
                 day = time_slot.get_day()
                 start_time = time_slot.start_time
                 end_time = time_slot.end_time
-                schedule[day][(start_time, end_time)] = (
-                    f"{subject.get_subject_name()}\n{room.get_room_num()}"
-                )
+                schedule[day].append((start_time, end_time, subject, room))
+
+        # Sort schedules for each day
+        for day in Day:
+            schedule[day].sort(key=lambda x: x[0])
 
         # Generate all possible time slots
         all_time_slots = []
@@ -329,30 +407,63 @@ class Schedule:
         ) + timedelta(hours=21)
 
         while current_time < end_of_day:
-            next_time = current_time + timedelta(minutes=30)
-            all_time_slots.append((current_time, next_time))
-            current_time = next_time
+            all_time_slots.append(current_time)
+            current_time += timedelta(minutes=5)
 
         table_data = []
-        for start_time, end_time in all_time_slots:
-            row = [
-                f"{start_time.strftime('%I:%M %p')} - {end_time.strftime('%I:%M %p')}"
-            ]
+        for time_slot in all_time_slots:
+            row = [time_slot.strftime("%I:%M %p")]
             for day in Day:
                 cell_content = ""
-                for (class_start, class_end), content in schedule[day].items():
-                    if class_start <= start_time < class_end:
-                        cell_content = content
+                for start_time, end_time, subject, room in schedule[day]:
+                    if start_time <= time_slot < end_time:
+                        cell_content = (
+                            f"{subject.get_subject_name()}\n{room.get_room_num()}"
+                        )
                         break
                 row.append(cell_content)
             table_data.append(row)
+
+        # Remove consecutive duplicate rows
+        compressed_table_data = []
+        for row in table_data:
+            if not compressed_table_data or row != compressed_table_data[-1]:
+                compressed_table_data.append(row)
 
         # Print the table
         headers = ["Time"] + [day.name.capitalize() for day in Day]
         print(
             f"\nSchedule for {block.get_block_dept().get_dept_prefix()}-{block.get_block_number()}:"
         )
-        print(tabulate(table_data, headers=headers, tablefmt="grid"))
+        print(tabulate(compressed_table_data, headers=headers, tablefmt="grid"))
+
+        # Print intervals between classes
+        for day in Day:
+            if schedule[day]:
+                print(f"\nIntervals for {day.name}:")
+                for i in range(len(schedule[day]) - 1):
+                    current_end = schedule[day][i][1]
+                    next_start = schedule[day][i + 1][0]
+                    interval = (next_start - current_end).total_seconds() / 60
+                    print(
+                        f"  {current_end.strftime('%I:%M %p')} - {next_start.strftime('%I:%M %p')}: {interval} minutes"
+                    )
+
+    def generate_visual_schedule(self, block, filename="class_schedule.png"):
+        schedule = {day: [] for day in Day}
+
+        for b, subject, room, time_slot in self.assignments:
+            if b == block:
+                day = time_slot.get_day()
+                start_time = time_slot.start_time
+                end_time = time_slot.end_time
+                schedule[day].append((start_time, end_time, subject, room))
+
+        # Sort schedules for each day
+        for day in Day:
+            schedule[day].sort(key=lambda x: x[0])
+
+        generate_visual_schedule(schedule, block, filename)
 
 
 class GeneticAlgorithm:
@@ -370,7 +481,6 @@ class GeneticAlgorithm:
         self.rooms = rooms
         self.population = [Schedule(blocks, rooms) for _ in range(population_size)]
         self.fitness_limit = fitness_limit
-        self.vcalc_fit = np.frompyfunc(lambda s: s.calculate_fitness(), 1, 1)
 
     def _select_parent(self) -> Schedule:
         # Arbitrary precision level
@@ -384,14 +494,9 @@ class GeneticAlgorithm:
         # select a sample from the given population and calculated sample size
         tournament = random.sample(self.population, math.floor(sample_size))
 
-        # Calculate fitness for all schedules in the tournament
-        fitness_values = self.vcalc_fit(tournament)
-
-        # Find the index of the maximum fitness value
-        max_fitness_index = np.argmax(fitness_values)
-
-        # Return the schedule with the highest fitness
-        return tournament[max_fitness_index]
+        # select the fittest (highest/max) schedule to be the parent based on the
+        # tournament list and their fitness score
+        return max(tournament, key=lambda schedule: schedule.calculate_fitness())
 
     def _crossover(self, parent1: Schedule, parent2: Schedule) -> Schedule:
         child = Schedule(self.blocks, self.rooms)
@@ -410,18 +515,29 @@ class GeneticAlgorithm:
                 block, subject, _, _ = schedule.assignments[i]
                 room = random.choice(self.rooms)
 
-                # Generate a random start time between 7:00 AM and 9:00 PM
+                # Generate a random start time between 7:00 AM and 9:00 PM, aligned to 5-minute intervals
                 start_time = datetime.combine(
                     datetime.today(), datetime.min.time()
-                ) + timedelta(hours=7, minutes=random.randint(0, 14 * 60))
+                ) + timedelta(
+                    hours=7,
+                    minutes=random.randint(0, 14 * 12)
+                    * 5,  # 14 hours * 12 5-minute intervals
+                )
 
                 end_time = start_time + subject.get_subject_duration()
 
                 # If end time is after 9:00 PM, adjust start time
                 if end_time.hour >= 21:
+                    minutes_duration = (
+                        subject.get_subject_duration().total_seconds() / 60
+                    )
                     start_time = (
                         datetime.combine(datetime.today(), datetime.min.time())
-                        + timedelta(hours=21)
+                        + timedelta(
+                            hours=21,
+                            minutes=-((-minutes_duration) // 5)
+                            * 5,  # Round up to nearest 5 minutes
+                        )
                         - subject.get_subject_duration()
                     )
                     end_time = start_time + subject.get_subject_duration()
@@ -490,7 +606,7 @@ if __name__ == "__main__":
     ]
 
     ga = GeneticAlgorithm(
-        population_size=1000,
+        population_size=50,
         mutation_rate=0.2,
         blocks=[block1, block2, block3],
         rooms=rooms,
@@ -512,3 +628,6 @@ if __name__ == "__main__":
     print(f"\nFitness: {best_schedule.calculate_fitness():.4f}")
     print(f"Best solution found in generation: {best_generation}")
     print(f"Time taken to find the best solution: {elapsed_time:.2f} seconds")
+    best_schedule.generate_visual_schedule(block1, "block1_schedule.png")
+    best_schedule.generate_visual_schedule(block2, "block2_schedule.png")
+    best_schedule.generate_visual_schedule(block3, "block3_schedule.png")
