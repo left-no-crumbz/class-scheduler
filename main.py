@@ -606,7 +606,7 @@ if __name__ == "__main__":
     ]
 
     ga = GeneticAlgorithm(
-        population_size=50,
+        population_size=200,
         mutation_rate=0.2,
         blocks=[block1, block2, block3],
         rooms=rooms,
@@ -618,7 +618,7 @@ if __name__ == "__main__":
         f"Number of assignments in first schedule: {len(ga.population[0].assignments)}"
     )
 
-    evolution_history, elapsed_time, best_generation = ga.evolve(generations=100)
+    evolution_history, elapsed_time, best_generation = ga.evolve(generations=200)
 
     print("\nEvolution completed.")
     best_schedule = evolution_history[-1][1]  # Get the best schedule
