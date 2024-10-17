@@ -1,3 +1,4 @@
+# '''
 # Class Scheduler
 # -- The goal is to use a genetic algorithm to create a class schedule that has no conflicts
 
@@ -22,13 +23,15 @@
 #    meeting in a week, and Lecture room in the second week or vice versa.
 #  - A subject should be able to occupy decimal hours (e.g., 1 hour and 30 minutes, etc)
 #  - A subject can have multiple available instructors and it randomly selects from the list of instructors.
-
+# '''
 import math
 import random
 import time
+from collections import defaultdict
 from datetime import datetime, timedelta
 from enum import Enum, IntEnum
-from typing import List
+from itertools import combinations
+from typing import List, Tuple
 
 from PIL import Image, ImageDraw, ImageFont
 from tabulate import tabulate
@@ -71,8 +74,8 @@ def generate_visual_schedule(schedule, block, filename="class_schedule.png"):
     # Draw grid
     for i, day in enumerate(days):
         draw.text((100 + i * cell_width + 5, 60), day, font=font, fill="black")
-        for j, time in enumerate(times):
-            draw.text((20, 100 + j * cell_height * 2), time, font=font, fill="black")
+        for j, t in enumerate(times):
+            draw.text((20, 100 + j * cell_height * 2), t, font=font, fill="black")
             draw.line(
                 [(100, 80 + j * cell_height * 2), (width, 80 + j * cell_height * 2)],
                 fill="black",
@@ -251,137 +254,116 @@ class Schedule:
         self.assignments = []
         for block in self.blocks:
             for subject in block.get_block_subjects():
-                room = random.choice(self.rooms)
+                # Schedule the subject twice
+                scheduled_days = set()
+                for _ in range(2):
+                    room = random.choice(self.rooms)
 
-                # Generate a random start time between 7:00 AM and 9:00 PM, aligned to 5-minute intervals
-                start_time = datetime.combine(
-                    datetime.today(), datetime.min.time()
-                ) + timedelta(
-                    hours=7,
-                    minutes=random.randint(0, 14 * 12)
-                    * 5,  # 14 hours * 12 5-minute intervals
-                )
-
-                end_time = start_time + subject.get_subject_duration()
-
-                # If end time is after 9:00 PM, adjust start time
-                if end_time.hour >= 21:
-                    minutes_duration = (
-                        subject.get_subject_duration().total_seconds() / 60
+                    # Generate a random start time between 7:00 AM and 9:00 PM, aligned to 5-minute intervals
+                    start_time = datetime.combine(
+                        datetime.today(), datetime.min.time()
+                    ) + timedelta(
+                        hours=7,
+                        minutes=random.randint(0, 14 * 12)
+                        * 5,  # 14 hours * 12 5-minute intervals
                     )
-                    start_time = (
-                        datetime.combine(datetime.today(), datetime.min.time())
-                        + timedelta(
-                            hours=21,
-                            minutes=-((-minutes_duration) // 5)
-                            * 5,  # Round up to nearest 5 minutes
-                        )
-                        - subject.get_subject_duration()
-                    )
+
                     end_time = start_time + subject.get_subject_duration()
 
-                day = random.choice(list(Day))
-                time_slot = TimeSlot(day, start_time, end_time)
-                self.assignments.append((block, subject, room, time_slot))
+                    # If end time is after 9:00 PM, adjust start time
+                    if end_time.hour >= 21:
+                        start_time = (
+                            datetime.combine(datetime.today(), datetime.min.time())
+                            + timedelta(hours=21)
+                            - subject.get_subject_duration()
+                        )
+                        end_time = datetime.combine(
+                            datetime.today(), datetime.min.time()
+                        ) + timedelta(hours=21)
+
+                    # Choose a day that hasn't been scheduled yet
+                    available_days = set(Day) - scheduled_days
+                    if available_days:
+                        day = random.choice(list(available_days))
+                        scheduled_days.add(day)
+                    else:
+                        day = random.choice(list(Day))  # Fallback, should rarely happen
+
+                    time_slot = TimeSlot(day, start_time, end_time)
+                    self.assignments.append((block, subject, room, time_slot))
 
     def calculate_fitness(self) -> float:
-        conflicts = 0
+        conflicts = defaultdict(int)
         total_assignments = len(self.assignments)
+        subject_occurrences = defaultdict(list)
 
-        # Helper function to check if two time ranges overlap
-        def time_overlap(time1: TimeSlot, time2: TimeSlot) -> bool:
-            return (
-                time1.start_time < time2.end_time and time2.start_time < time1.end_time
-            )
+        def time_overlap(t1, t2):
+            return t1.start_time < t2.end_time and t2.start_time < t1.end_time
 
-        # Helper function to calculate time difference in minutes
-        def time_diff_minutes(time1: datetime, time2: datetime) -> int:
-            return abs(int((time1 - time2).total_seconds() / 60))
+        def time_diff_minutes(t1, t2):
+            return abs(int((t1 - t2).total_seconds() / 60))
 
-        for i, (block1, subject1, room1, time1) in enumerate(self.assignments):
-            day1 = time1.get_day()
+        # Pre-process assignments
+        day_block_assignments = defaultdict(list)
 
-            # Check if subject is within 7am to 9pm
-            if time1.start_time.hour < 7 or time1.end_time.hour >= 21:
-                conflicts += 1
+        for block, subject, room, t in self.assignments:
+            day = t.get_day()
+            day_block_assignments[(day, block)].append((subject, room, t))
 
-            # Check for conflicts with other assignments
-            for j, (block2, subject2, room2, time2) in enumerate(
-                self.assignments[i + 1 :], i + 1
+            conflicts["time"] += t.start_time.hour < 7 or t.end_time.hour > 21
+            subject_occurrences[(block, subject)].append(day)
+
+        # Check for conflicts
+        for (day, block), assignments in day_block_assignments.items():
+            sorted_assignments = sorted(assignments, key=lambda x: x[2].start_time)
+
+            for (subject1, room1, time1), (subject2, room2, time2) in combinations(
+                sorted_assignments, 2
             ):
-                day2 = time2.get_day()
+                if time_overlap(time1, time2):
+                    conflicts["room"] += room1 == room2
+                    conflicts["instructor"] += bool(
+                        set(subject1.get_subject_instructors())
+                        & set(subject2.get_subject_instructors())
+                    )
+                    conflicts["block"] += 1
 
-                if day1 == day2 and time_overlap(time1, time2):
-                    # Room conflict
-                    if room1 == room2:
-                        conflicts += 1
+                interval = time_diff_minutes(time2.start_time, time1.end_time)
+                conflicts["interval"] += 0 < interval < 5 or interval > 10
 
-                    # Instructor conflict
-                    if any(
-                        instr in subject2.get_subject_instructors()
-                        for instr in subject1.get_subject_instructors()
-                    ):
-                        conflicts += 1
-
-                    # Block conflict
-                    if block1 == block2:
-                        conflicts += 1
-
-            # Check for proper intervals between subjects
-            block_assignments = [
-                a for a in self.assignments if a[0] == block1 and a[3].get_day() == day1
-            ]
-            sorted_assignments = sorted(
-                block_assignments, key=lambda a: a[3].start_time
-            )
-
-            for k in range(len(sorted_assignments) - 1):
-                _, _, _, current_slot = sorted_assignments[k]
-                _, _, _, next_slot = sorted_assignments[k + 1]
-
-                interval = time_diff_minutes(
-                    next_slot.start_time, current_slot.end_time
-                )
-
-                # Penalize if interval is less than 5 minutes or more than 10 minutes
-                if interval < 5 or interval > 10:
-                    conflicts += 1
-
-        # Check for breaks after every 5 hours
-        for block in self.blocks:
-            for day in Day:
-                day_assignments = sorted(
-                    [
-                        a
-                        for a in self.assignments
-                        if a[0] == block and a[3].get_day() == day
-                    ],
-                    key=lambda a: a[3].start_time,
-                )
-
-                if day_assignments:
+            # Check for breaks after every 5 hours
+            cumulative_time = timedelta()
+            last_break_end = sorted_assignments[0][2].start_time
+            for _, _, time_slot in sorted_assignments:
+                cumulative_time += time_slot.end_time - time_slot.start_time
+                if cumulative_time >= timedelta(hours=5):
+                    break_duration = time_diff_minutes(
+                        time_slot.end_time, last_break_end
+                    )
+                    conflicts["time"] += break_duration < 30 or break_duration > 60
                     cumulative_time = timedelta()
-                    last_break_end = day_assignments[0][3].start_time
+                    last_break_end = time_slot.end_time
 
-                    for _, _, _, time_slot in day_assignments:
-                        cumulative_time += time_slot.end_time - time_slot.start_time
+        # Check subject occurrences
+        conflicts["subject_occurrence"] = sum(
+            len(occurrences) != 2 or len(set(occurrences)) != 2
+            for occurrences in subject_occurrences.values()
+        )
 
-                        if cumulative_time >= timedelta(hours=5):
-                            break_duration = time_diff_minutes(
-                                time_slot.end_time, last_break_end
-                            )
-                            if break_duration < 30 or break_duration > 60:
-                                conflicts += 1
-                            cumulative_time = timedelta()
-                            last_break_end = time_slot.end_time
+        # Calculate total conflicts with weights
+        weights = {
+            "time": 20,
+            "room": 3,
+            "instructor": 3,
+            "block": 3,
+            "interval": 1,
+            "subject_occurrence": 2,
+        }
+        total_conflicts = sum(conflicts[k] * weights[k] for k in weights)
 
-        # Normalize conflicts
-        normalized_conflicts = conflicts / total_assignments
-
-        # Calculate fitness (higher is better)
-        fitness = 1 / (1 + normalized_conflicts)
-
-        return fitness
+        # Normalize conflicts and calculate fitness
+        max_possible_conflicts = total_assignments * 32
+        return 1 - (total_conflicts / max_possible_conflicts)
 
     def print_block_schedule(self, block: Block):
         schedule = {day: [] for day in Day}
@@ -474,6 +456,7 @@ class GeneticAlgorithm:
         blocks: List[Block],
         rooms: List[Room],
         fitness_limit=1.00,
+        elitism_rate=0.1,
     ):
         self.population_size = population_size
         self.mutation_rate = mutation_rate
@@ -481,6 +464,7 @@ class GeneticAlgorithm:
         self.rooms = rooms
         self.population = [Schedule(blocks, rooms) for _ in range(population_size)]
         self.fitness_limit = fitness_limit
+        self.elitism_rate = elitism_rate
 
     def _select_parent(self) -> Schedule:
         # Arbitrary precision level
@@ -528,21 +512,28 @@ class GeneticAlgorithm:
 
                 # If end time is after 9:00 PM, adjust start time
                 if end_time.hour >= 21:
-                    minutes_duration = (
-                        subject.get_subject_duration().total_seconds() / 60
-                    )
                     start_time = (
                         datetime.combine(datetime.today(), datetime.min.time())
-                        + timedelta(
-                            hours=21,
-                            minutes=-((-minutes_duration) // 5)
-                            * 5,  # Round up to nearest 5 minutes
-                        )
+                        + timedelta(hours=21)
                         - subject.get_subject_duration()
                     )
-                    end_time = start_time + subject.get_subject_duration()
+                    end_time = datetime.combine(
+                        datetime.today(), datetime.min.time()
+                    ) + timedelta(hours=21)
 
-                day = random.choice(list(Day))
+                # Ensure the new day is different from the other occurrence of this subject
+                current_days = [
+                    assign[3].get_day()
+                    for assign in schedule.assignments
+                    if assign[0] == block and assign[1] == subject
+                ]
+
+                available_days = list(set(Day) - set(current_days))
+                if available_days:
+                    day = random.choice(available_days)
+                else:
+                    day = random.choice(list(Day))
+
                 time_slot = TimeSlot(day, start_time, end_time)
                 schedule.assignments[i] = (block, subject, room, time_slot)
 
@@ -550,14 +541,164 @@ class GeneticAlgorithm:
         evolution_history = []
         start_time = time.time()
         for gen in range(generations):
-            new_population = []
-            for _ in range(self.population_size):
+            self.population.sort(key=lambda x: x.calculate_fitness(), reverse=True)
+
+            # Elitism
+            elite_size = int(self.population_size * self.elitism_rate)
+            new_population = self.population[:elite_size]
+
+            while len(new_population) < self.population_size:
                 parent1 = self._select_parent()
                 parent2 = self._select_parent()
                 child = self._crossover(parent1, parent2)
                 self._mutate(child)
                 new_population.append(child)
+
             self.population = new_population
+
+            best_schedule = self.get_best_schedule()
+            evolution_history.append((gen, best_schedule))
+
+            if math.isclose(
+                best_schedule.calculate_fitness(), self.fitness_limit, abs_tol=0.001
+            ):
+                break
+
+        elapsed_time = time.time() - start_time
+        best_generation = evolution_history[-1][0]
+        return evolution_history, elapsed_time, best_generation
+
+    def get_best_schedule(self) -> Schedule:
+        return max(self.population, key=lambda schedule: schedule.calculate_fitness())
+
+
+class ImprovedGeneticAlgorithm:
+    def __init__(
+        self,
+        population_size: int,
+        mutation_rate: float,
+        blocks: List[Block],
+        rooms: List[Room],
+        fitness_limit=1.00,
+        num_subpopulations=5,
+        migration_interval=10,
+        migration_rate=0.1,
+        elitism_rate=0.1,
+    ):
+        self.population_size = population_size
+        self.mutation_rate = mutation_rate
+        self.blocks = blocks
+        self.rooms = rooms
+        self.fitness_limit = fitness_limit
+        self.num_subpopulations = num_subpopulations
+        self.migration_interval = migration_interval
+        self.migration_rate = migration_rate
+        self.elitism_rate = elitism_rate
+
+        # Initialize subpopulations
+        subpopulation_size = population_size // num_subpopulations
+        self.subpopulations = [
+            [Schedule(blocks, rooms) for _ in range(subpopulation_size)]
+            for _ in range(num_subpopulations)
+        ]
+
+    def _select_parent(self, subpopulation: List[Schedule]) -> Schedule:
+        tournament_size = max(2, len(subpopulation) // 5)
+        tournament = random.sample(subpopulation, tournament_size)
+        return max(tournament, key=lambda schedule: schedule.calculate_fitness())
+
+    def _crossover(self, parent1: Schedule, parent2: Schedule) -> Schedule:
+        child = Schedule(self.blocks, self.rooms)
+        midpoint = len(parent1.assignments) // 2
+        child.assignments = (
+            parent1.assignments[:midpoint] + parent2.assignments[midpoint:]
+        )
+        return child
+
+    def _mutate(self, schedule: Schedule, mutation_rate: float):
+        for i in range(len(schedule.assignments)):
+            if random.random() < mutation_rate:
+                block, subject, _, _ = schedule.assignments[i]
+                room = random.choice(self.rooms)
+                start_time = datetime.combine(
+                    datetime.today(), datetime.min.time()
+                ) + timedelta(hours=7, minutes=random.randint(0, 14 * 12) * 5)
+                end_time = start_time + subject.get_subject_duration()
+                if end_time.hour >= 21:
+                    start_time = (
+                        datetime.combine(datetime.today(), datetime.min.time())
+                        + timedelta(hours=21)
+                        - subject.get_subject_duration()
+                    )
+                    end_time = datetime.combine(
+                        datetime.today(), datetime.min.time()
+                    ) + timedelta(hours=21)
+                current_days = [
+                    assign[3].get_day()
+                    for assign in schedule.assignments
+                    if assign[0] == block and assign[1] == subject
+                ]
+                available_days = list(set(Day) - set(current_days))
+                day = (
+                    random.choice(available_days)
+                    if available_days
+                    else random.choice(list(Day))
+                )
+                time_slot = TimeSlot(day, start_time, end_time)
+                schedule.assignments[i] = (block, subject, room, time_slot)
+
+    def _migrate(self):
+        for i in range(self.num_subpopulations):
+            next_subpop = (i + 1) % self.num_subpopulations
+            migrants = random.sample(
+                self.subpopulations[i],
+                int(len(self.subpopulations[i]) * self.migration_rate),
+            )
+            self.subpopulations[next_subpop].extend(migrants)
+            self.subpopulations[next_subpop] = sorted(
+                self.subpopulations[next_subpop],
+                key=lambda x: x.calculate_fitness(),
+                reverse=True,
+            )[: len(self.subpopulations[i])]
+
+    def evolve(self, generations: int) -> Tuple[List[Tuple[int, Schedule]], float, int]:
+        evolution_history = []
+        start_time = time.time()
+
+        for gen in range(generations):
+            for subpop_idx, subpopulation in enumerate(self.subpopulations):
+                new_subpopulation = []
+
+                # Elitism
+                elites = int(len(subpopulation) * self.elitism_rate)
+                new_subpopulation.extend(
+                    sorted(
+                        subpopulation, key=lambda x: x.calculate_fitness(), reverse=True
+                    )[:elites]
+                )
+
+                # Generate new individuals
+                while len(new_subpopulation) < len(subpopulation):
+                    parent1 = self._select_parent(subpopulation)
+                    parent2 = self._select_parent(subpopulation)
+                    child = self._crossover(parent1, parent2)
+
+                    # Dynamic mutation rate based on population diversity
+                    diversity = self._calculate_diversity(subpopulation)
+                    dynamic_mutation_rate = self.mutation_rate * (1 + (1 - diversity))
+
+                    self._mutate(child, dynamic_mutation_rate)
+                    new_subpopulation.append(child)
+
+                # Check for premature convergence and trigger disaster event if needed
+                if self._detect_premature_convergence(subpopulation):
+                    self._trigger_disaster_event(new_subpopulation)
+
+                self.subpopulations[subpop_idx] = new_subpopulation
+
+            # Migration
+            if gen % self.migration_interval == 0:
+                self._migrate()
 
             best_schedule = self.get_best_schedule()
             evolution_history.append((gen, best_schedule))
@@ -571,7 +712,29 @@ class GeneticAlgorithm:
         return evolution_history, elapsed_time, best_generation
 
     def get_best_schedule(self) -> Schedule:
-        return max(self.population, key=lambda schedule: schedule.calculate_fitness())
+        return max(
+            (schedule for subpop in self.subpopulations for schedule in subpop),
+            key=lambda schedule: schedule.calculate_fitness(),
+        )
+
+    def _calculate_diversity(self, subpopulation: List[Schedule]) -> float:
+        fitnesses = [schedule.calculate_fitness() for schedule in subpopulation]
+        avg_fitness = sum(fitnesses) / len(fitnesses)
+        variance = sum((f - avg_fitness) ** 2 for f in fitnesses) / len(fitnesses)
+        return (
+            math.sqrt(variance) / avg_fitness
+        )  # Coefficient of variation as a measure of diversity
+
+    def _trigger_disaster_event(self, subpopulation: List[Schedule]):
+        disaster_size = int(len(subpopulation) * 0.5)  # Replace 50% of the population
+        new_individuals = [
+            Schedule(self.blocks, self.rooms) for _ in range(disaster_size)
+        ]
+        subpopulation[-disaster_size:] = new_individuals
+
+    def _detect_premature_convergence(self, subpopulation: List[Schedule]) -> bool:
+        diversity = self._calculate_diversity(subpopulation)
+        return diversity < 0.1  # Threshold for detecting premature convergence
 
 
 if __name__ == "__main__":
@@ -592,6 +755,9 @@ if __name__ == "__main__":
         ["SJH-503", 45, RoomType.LECTURE],
         ["SJH-504", 45, RoomType.LAB],
         ["SJH-505", 45, RoomType.LECTURE],
+        ["SJH-506", 45, RoomType.LECTURE],
+        ["SJH-507", 45, RoomType.LECTURE],
+        ["SJH-508", 45, RoomType.LECTURE],
     ]
 
     dept = Department("CS", [INTCALC, PROBSTAT, IMODSIM, ATF, SOFTENG])
@@ -600,34 +766,32 @@ if __name__ == "__main__":
     block1 = Block("301", dept, dept_subjects, 45)
     block2 = Block("302", dept, dept_subjects, 45)
     block3 = Block("303", dept, dept_subjects, 45)
+    block4 = Block("304", dept, dept_subjects, 45)
 
     rooms = [
         Room(room_num, capacity, room_type) for room_num, capacity, room_type in ROOMS
     ]
 
-    ga = GeneticAlgorithm(
-        population_size=200,
+    ga = ImprovedGeneticAlgorithm(
+        population_size=150,
         mutation_rate=0.2,
         blocks=[block1, block2, block3],
         rooms=rooms,
+        num_subpopulations=10,
+        migration_interval=10,
+        migration_rate=0.1,
+        elitism_rate=0.1,
     )
 
-    print("Initial population created.")
-    print(f"Number of schedules in population: {len(ga.population)}")
-    print(
-        f"Number of assignments in first schedule: {len(ga.population[0].assignments)}"
-    )
-
-    evolution_history, elapsed_time, best_generation = ga.evolve(generations=200)
+    evolution_history, elapsed_time, best_generation = ga.evolve(generations=150)
 
     print("\nEvolution completed.")
     best_schedule = evolution_history[-1][1]  # Get the best schedule
-    for block in [block1, block2, block3]:
-        best_schedule.print_block_schedule(block)
+    for idx, block in enumerate([block1, block2, block3, block4]):
+        # best_schedule.print_block_schedule(block)
+        best_schedule.generate_visual_schedule(block, f"block{idx+1}_schedule.png")
 
+    best_schedule = ga.get_best_schedule()
     print(f"\nFitness: {best_schedule.calculate_fitness():.4f}")
     print(f"Best solution found in generation: {best_generation}")
     print(f"Time taken to find the best solution: {elapsed_time:.2f} seconds")
-    best_schedule.generate_visual_schedule(block1, "block1_schedule.png")
-    best_schedule.generate_visual_schedule(block2, "block2_schedule.png")
-    best_schedule.generate_visual_schedule(block3, "block3_schedule.png")
