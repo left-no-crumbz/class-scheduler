@@ -171,6 +171,11 @@ class Subject:
         self._name = name
         self._instructors = instructors
         self.duration = duration
+        self._instructor = None
+        self.set_subject_instructor()
+
+    def set_subject_instructor(self) -> None:
+        self._instructor = random.choice(self._instructors)
 
     def get_subject_name(self) -> str:
         return self._name
@@ -306,6 +311,7 @@ class Schedule:
 
         # Pre-process assignments
         day_block_assignments = defaultdict(list)
+        day_assignments = defaultdict(list)
 
         for block, subject, room, t in self.assignments:
             day = t.get_day()
@@ -329,7 +335,8 @@ class Schedule:
                         & set(subject2.get_subject_instructors())
                     )
                     conflicts["block"] += 1
-
+                    if subject1._instructor == subject2._instructor:
+                        conflicts["instructor"] += 1
                 interval = time_diff_minutes(time2.start_time, time1.end_time)
                 if interval < 5:
                     conflicts["interval"] += (
@@ -352,6 +359,37 @@ class Schedule:
                     conflicts["time"] += break_duration < 30 or break_duration > 60
                     cumulative_time = timedelta()
                     last_break_end = time_slot.end_time
+
+        # For cases where block1 and block2 have overlapping or similar schedule
+        for day, assignments in day_assignments.items():
+            sorted_assignments = sorted(
+                assignments, key=lambda x: x[3].start_time
+            )  # Sort by time
+
+            for (block1, subject1, room1, time1), (
+                block2,
+                subject2,
+                room2,
+                time2,
+            ) in combinations(sorted_assignments, 2):
+                # If block1 and block 2 are different blocks
+                # and the time overlaps, penalize the schedule
+                if block1 != block2 and time_overlap(time1, time2):
+                    # If block1 and block2 have overlapping schedules,
+                    # penalize if they have the same room, same instructors
+                    if room1 == room2:
+                        conflicts["room"] += 1
+                        conflicts["time"] += 1
+
+                    # conflicts["instructor"] += bool(
+                    #     set(subject1.get_subject_instructors())
+                    #     & set(subject2.get_subject_instructors())
+                    # )
+
+                    # Check for same subject in different blocks
+                    if subject1 == subject2:
+                        if subject1._instructor == subject2._instructor:
+                            conflicts["instructor"] += 1
 
         # Check subject occurrences
         conflicts["subject_occurrence"] = sum(
@@ -586,7 +624,6 @@ class ImprovedGeneticAlgorithm:
     def __init__(
         self,
         population_size: int,
-        mutation_rate: float,
         blocks: List[Block],
         rooms: List[Room],
         fitness_limit=1.00,
@@ -596,7 +633,6 @@ class ImprovedGeneticAlgorithm:
         elitism_rate=0.1,
     ):
         self.population_size = population_size
-        self.mutation_rate = mutation_rate
         self.blocks = blocks
         self.rooms = rooms
         self.fitness_limit = fitness_limit
@@ -612,17 +648,37 @@ class ImprovedGeneticAlgorithm:
             for _ in range(num_subpopulations)
         ]
 
+        # Assign distinct mutation rates to each subpopulation
+        self.subpopulation_mutation_rates = [
+            random.uniform(0.01, 0.05) for _ in range(num_subpopulations)
+        ]
+
     def _select_parent(self, subpopulation: List[Schedule]) -> Schedule:
         tournament_size = max(2, len(subpopulation) // 5)
         tournament = random.sample(subpopulation, tournament_size)
         return max(tournament, key=lambda schedule: schedule.calculate_fitness())
 
-    def _crossover(self, parent1: Schedule, parent2: Schedule) -> Schedule:
+    def _crossover(
+        self, parent1: Schedule, parent2: Schedule, strategy: str
+    ) -> Schedule:
         child = Schedule(self.blocks, self.rooms)
-        midpoint = len(parent1.assignments) // 2
-        child.assignments = (
-            parent1.assignments[:midpoint] + parent2.assignments[midpoint:]
-        )
+        if strategy == "single_point":
+            # Single-point crossover
+            midpoint = len(parent1.assignments) // 2
+            child.assignments = (
+                parent1.assignments[:midpoint] + parent2.assignments[midpoint:]
+            )
+        elif strategy == "multi_parent":
+            # Multi-parent crossover (example using 3 parents)
+            parent3 = random.choice(
+                self.subpopulations[0]
+            )  # Example of selecting an additional parent
+            third_point = len(parent1.assignments) // 3
+            child.assignments = (
+                parent1.assignments[:third_point]
+                + parent2.assignments[third_point : 2 * third_point]
+                + parent3.assignments[2 * third_point :]
+            )
         return child
 
     def _mutate(self, schedule: Schedule, mutation_rate: float):
@@ -676,6 +732,9 @@ class ImprovedGeneticAlgorithm:
         start_time = time.time()
 
         for gen in range(generations):
+            # Start timer for this generation
+            gen_start_time = time.time()
+
             for subpop_idx, subpopulation in enumerate(self.subpopulations):
                 new_subpopulation = []
 
@@ -688,15 +747,18 @@ class ImprovedGeneticAlgorithm:
                 )
 
                 # Generate new individuals
+                crossover_strategy = random.choice(
+                    ["single_point", "multi_parent"]
+                )  # Randomly select crossover strategy
                 while len(new_subpopulation) < len(subpopulation):
                     parent1 = self._select_parent(subpopulation)
                     parent2 = self._select_parent(subpopulation)
-                    child = self._crossover(parent1, parent2)
+                    child = self._crossover(parent1, parent2, crossover_strategy)
 
-                    # Dynamic mutation rate based on population diversity
-                    diversity = self._calculate_diversity(subpopulation)
-                    dynamic_mutation_rate = self.mutation_rate * (1 + (1 - diversity))
-
+                    # Use subpopulation-specific mutation rates
+                    dynamic_mutation_rate = self.subpopulation_mutation_rates[
+                        subpop_idx
+                    ]
                     self._mutate(child, dynamic_mutation_rate)
                     new_subpopulation.append(child)
 
@@ -717,9 +779,16 @@ class ImprovedGeneticAlgorithm:
             if math.isclose(best_schedule.calculate_fitness(), self.fitness_limit):
                 break
 
-        elapsed_time = time.time() - start_time
+            # End timer for this generation and print results
+            gen_end_time = time.time()
+            gen_elapsed_time = gen_end_time - gen_start_time
+            print(f"Generation {gen + 1} completed in {gen_elapsed_time:.2f} seconds.")
+
+        # Finalize total evolution time
+        total_elapsed_time = time.time() - start_time
         best_generation = evolution_history[-1][0]
-        return evolution_history, elapsed_time, best_generation
+        print(f"Evolution completed in {total_elapsed_time:.2f} seconds.")
+        return evolution_history, total_elapsed_time, best_generation
 
     def get_best_schedule(self) -> Schedule:
         return max(
@@ -735,8 +804,12 @@ class ImprovedGeneticAlgorithm:
             math.sqrt(variance) / avg_fitness
         )  # Coefficient of variation as a measure of diversity
 
-    def _trigger_disaster_event(self, subpopulation: List[Schedule]):
-        disaster_size = int(len(subpopulation) * 0.5)  # Replace 50% of the population
+    def _trigger_disaster_event(
+        self, subpopulation: List[Schedule], disaster_rate: float = 0.5
+    ):
+        disaster_size = int(
+            len(subpopulation) * disaster_rate
+        )  # Replace a portion of the population
         new_individuals = [
             Schedule(self.blocks, self.rooms) for _ in range(disaster_size)
         ]
@@ -754,11 +827,11 @@ if __name__ == "__main__":
     sir_glenn = Instructor("Sir Glenn Mañalac")
     sir_lloyd = Instructor("Sir Lloyd Estrada")
     maam_raquel = Instructor("Ma'am Raquel Rivera")
-    sir_marc = Instructor("Marc Corporal")
-    mam_max = Instructor("Max")
-    anisa = Instructor("Anisa")
-    patrick = Instructor("Patrick")
-    kyle = Instructor("Kyle")
+    sir_marc = Instructor("Sir Marc Corporal")
+    mam_max = Instructor("Ma'am Max")
+    anisa = Instructor("Ma'am Anisa")
+    patrick = Instructor("Sir Patrick")
+    kyle = Instructor("Sir Kyle")
 
     IMODSIM = Subject("IMODSIM", [maam_lou, sir_marc], timedelta(hours=2))
     PROBSTAT = Subject("PROBSTAT", [sir_lloyd, mam_max], timedelta(hours=1, minutes=30))
@@ -771,8 +844,6 @@ if __name__ == "__main__":
         ["SJH-504", 45, RoomType.LAB],
         ["SJH-505", 45, RoomType.LECTURE],
         ["SJH-506", 45, RoomType.LECTURE],
-        ["SJH-507", 45, RoomType.LECTURE],
-        ["SJH-508", 45, RoomType.LECTURE],
     ]
 
     dept = Department("CS", [INTCALC, PROBSTAT, IMODSIM, ATF, SOFTENG])
@@ -789,7 +860,6 @@ if __name__ == "__main__":
 
     ga = ImprovedGeneticAlgorithm(
         population_size=250,
-        mutation_rate=0.2,
         blocks=[block1, block2, block3, block4],
         rooms=rooms,
         num_subpopulations=10,
