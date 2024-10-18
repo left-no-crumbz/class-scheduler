@@ -291,6 +291,7 @@ class Schedule:
 
                     time_slot = TimeSlot(day, start_time, end_time)
                     self.assignments.append((block, subject, room, time_slot))
+        # print(f"The assignments are: {len(self.assignments)}")
 
     def calculate_fitness(self) -> float:
         conflicts = defaultdict(int)
@@ -744,12 +745,17 @@ if __name__ == "__main__":
     sir_glenn = Instructor("Sir Glenn Mañalac")
     sir_lloyd = Instructor("Sir Lloyd Estrada")
     maam_raquel = Instructor("Ma'am Raquel Rivera")
+    sir_marc = Instructor("Marc Corporal")
+    mam_max = Instructor("Max")
+    anisa = Instructor("Anisa")
+    patrick = Instructor("Patrick")
+    kyle = Instructor("Kyle")
 
-    IMODSIM = Subject("IMODSIM", [maam_lou], timedelta(hours=2))
-    PROBSTAT = Subject("PROBSTAT", [sir_lloyd], timedelta(hours=1, minutes=30))
-    INTCALC = Subject("INTCALC", [sir_glenn], timedelta(hours=1, minutes=30))
-    ATF = Subject("ATF", [sir_uly], timedelta(hours=3))
-    SOFTENG = Subject("SOFTENG", [maam_raquel], timedelta(hours=2))
+    IMODSIM = Subject("IMODSIM", [maam_lou, sir_marc], timedelta(hours=2))
+    PROBSTAT = Subject("PROBSTAT", [sir_lloyd, mam_max], timedelta(hours=1, minutes=30))
+    INTCALC = Subject("INTCALC", [sir_glenn, anisa], timedelta(hours=1, minutes=30))
+    ATF = Subject("ATF", [sir_uly, patrick], timedelta(hours=3))
+    SOFTENG = Subject("SOFTENG", [maam_raquel, kyle], timedelta(hours=2))
 
     ROOMS = [
         ["SJH-503", 45, RoomType.LECTURE],
@@ -775,7 +781,7 @@ if __name__ == "__main__":
     ga = ImprovedGeneticAlgorithm(
         population_size=150,
         mutation_rate=0.2,
-        blocks=[block1, block2, block3],
+        blocks=[block1, block2, block3, block4],
         rooms=rooms,
         num_subpopulations=10,
         migration_interval=10,
