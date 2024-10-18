@@ -322,6 +322,7 @@ class Schedule:
                 sorted_assignments, 2
             ):
                 if time_overlap(time1, time2):
+                    conflicts["time"] += 1
                     conflicts["room"] += room1 == room2
                     conflicts["instructor"] += bool(
                         set(subject1.get_subject_instructors())
@@ -330,7 +331,14 @@ class Schedule:
                     conflicts["block"] += 1
 
                 interval = time_diff_minutes(time2.start_time, time1.end_time)
-                conflicts["interval"] += 0 < interval < 5 or interval > 10
+                if interval < 5:
+                    conflicts["interval"] += (
+                        1  # Penalize if interval is less than 5 minutes
+                    )
+                elif interval > 10 and interval % 5 != 0:
+                    conflicts["interval"] += (
+                        1  # Penalize if interval exceeds 10 and is not divisible by 5
+                    )
 
             # Check for breaks after every 5 hours
             cumulative_time = timedelta()
@@ -363,7 +371,8 @@ class Schedule:
         total_conflicts = sum(conflicts[k] * weights[k] for k in weights)
 
         # Normalize conflicts and calculate fitness
-        max_possible_conflicts = total_assignments * 32
+        max_possible_conflicts = total_assignments * sum(weights.values())
+
         return 1 - (total_conflicts / max_possible_conflicts)
 
     def print_block_schedule(self, block: Block):
@@ -779,7 +788,7 @@ if __name__ == "__main__":
     ]
 
     ga = ImprovedGeneticAlgorithm(
-        population_size=150,
+        population_size=250,
         mutation_rate=0.2,
         blocks=[block1, block2, block3, block4],
         rooms=rooms,
@@ -789,7 +798,7 @@ if __name__ == "__main__":
         elitism_rate=0.1,
     )
 
-    evolution_history, elapsed_time, best_generation = ga.evolve(generations=150)
+    evolution_history, elapsed_time, best_generation = ga.evolve(generations=250)
 
     print("\nEvolution completed.")
     best_schedule = evolution_history[-1][1]  # Get the best schedule
