@@ -415,6 +415,19 @@ class Schedule:
                         f"Instructors: {[instr.get_name() for instr in subject.get_subject_instructors()]}"
                     )
 
+            # Check for breaks after every 5 hours
+            # cumulative_time = timedelta()
+            # last_break_end = sorted_assignments[0][2]._start_time
+            # for _, _, time_slot in sorted_assignments:
+            #     cumulative_time += time_slot._end_time - time_slot._start_time
+            #     if cumulative_time >= timedelta(hours=5):
+            #         break_duration = time_diff_minutes(
+            #             time_slot._end_time, last_break_end
+            #         )
+            #         conflicts["time"] += break_duration < 30 or break_duration > 60
+            #         cumulative_time = timedelta()
+            #         last_break_end = time_slot._end_time
+
         # For cases where block1 and block2 have overlapping or similar schedule
         for day, assignments in day_assignments.items():
             sorted_assignments = sorted(
@@ -493,6 +506,22 @@ class Schedule:
             schedule[day].sort(key=lambda x: x[0])
 
         generate_visual_schedule(schedule, block, filename)
+
+
+"""
+Papers used: 
+1. Preventing Premature Convergence in Genetic Algorithm
+Using DGCA and Elitist Technique
+2. An optimized solution to the course scheduling problem in universities under an improved genetic algorithm
+
+Techniques used:
+1. Elitism
+2. Distributed Genetic Algorithm
+3. Dynamic Genetic Clustering Algorithm
+4. Multi-parent crossover
+5. Multiple coevolution
+6. Social Disaster Techniques (SDT)
+"""
 
 
 class ImprovedGeneticAlgorithm:
@@ -603,6 +632,18 @@ class ImprovedGeneticAlgorithm:
                 key=lambda x: x.calculate_fitness(),
                 reverse=True,
             )[: len(self.subpopulations[i])]
+
+    def _generate_child(self, parent1, parent2, crossover_strategy, subpop_idx):
+        # Perform crossover to generate the child
+        child = self._crossover(parent1, parent2, crossover_strategy)
+
+        # Use subpopulation-specific mutation rates
+        dynamic_mutation_rate = self.subpopulation_mutation_rates[subpop_idx]
+
+        # Mutate the child
+        self._mutate(child, dynamic_mutation_rate)
+
+        return child
 
     def evolve(self, generations: int) -> tuple[list[tuple[int, Schedule]], float, int]:
         evolution_history = []
@@ -731,7 +772,7 @@ if __name__ == "__main__":
     block4 = Block("304", dept, YearLevel.THIRD)
 
     ga = ImprovedGeneticAlgorithm(
-        population_size=250,
+        population_size=350,
         blocks=[block1, block2, block3, block4],
         rooms=rooms,
         num_subpopulations=10,
@@ -740,7 +781,7 @@ if __name__ == "__main__":
         elitism_rate=0.1,
     )
 
-    evolution_history, elapsed_time, best_generation = ga.evolve(generations=250)
+    evolution_history, elapsed_time, best_generation = ga.evolve(generations=350)
 
     print("\nEvolution completed.")
     best_schedule = evolution_history[-1][1]  # Get the best schedule
