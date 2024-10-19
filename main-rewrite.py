@@ -288,13 +288,22 @@ class Schedule:
             filter(lambda room: room.get_room_type() == RoomType.LAB, self._rooms)
         )
 
+        # there should be available lecture rooms
         if (
-            subject._subject_type == SubjectType.GENERAL_EDUCATION
+            lecture_rooms
+            and subject._subject_type == SubjectType.GENERAL_EDUCATION
             or subject._subject_type == SubjectType.SPECIALIZED_LECTURE
         ):
             room = random.choice(lab_rooms)
-        elif subject._subject_type == SubjectType.SPECIALIZED_LAB:
+
+        # there should be available lab rooms
+        elif lab_rooms and subject._subject_type == SubjectType.SPECIALIZED_LAB:
             room = random.choice(lecture_rooms)
+
+        # If lab or lecture rooms are empty, just choose a random room from the list of rooms
+        # that would severely impact the accuracy of the model however.
+        else:
+            room = random.choice(self._rooms)
 
         # generate a random start and end time
         start_time, end_time = self.generate_random_time(subject)
@@ -735,6 +744,10 @@ class ImprovedGeneticAlgorithm:
         return diversity < 0.1  # Threshold for detecting premature convergence
 
 
+def create_intructor(name: str) -> Instructor:
+    return Instructor(name)
+
+
 if __name__ == "__main__":
     sir_uly = Instructor("Sir Ulysses Monsale")
     maam_lou = Instructor("Ma'am Louella Salenga")
@@ -755,6 +768,7 @@ if __name__ == "__main__":
     ADET = Subject("ADET", [kyle, sir_uly], SubjectType.SPECIALIZED_LAB)
 
     subjects = [IMODSIM, PROBSTAT, INTCALC, ATF, SOFTENG, PROBSTAT]
+
     ROOMS = [
         ["SJH-503", RoomType.LECTURE],
         ["SJH-504", RoomType.LAB],
