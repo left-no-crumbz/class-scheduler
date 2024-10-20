@@ -186,13 +186,20 @@ class Subject:
 
 class Department:
     def __init__(
-        self, prefix: str, year_level_subjects: dict[YearLevel, list[Subject]]
+        self,
+        prefix: str,
+        year_level_subjects: dict[YearLevel, list[Subject]],
+        year_level: YearLevel,
     ) -> None:
         self._prefix = prefix
         self._year_level_subjects = year_level_subjects
+        self._year_level = year_level
 
     def get_prefix(self) -> str:
         return self._prefix
+
+    def get_year_level(self) -> YearLevel:
+        return self._year_level
 
     def get_all_subjects(self) -> dict[YearLevel, list[Subject]]:
         return self._year_level_subjects
@@ -760,6 +767,21 @@ def create_room(room_num: str, room_type: RoomType) -> Room:
     return Room(room_num=room_num, room_type=room_type)
 
 
+def create_dept(
+    prefix: str, year_level: YearLevel, subjects: list[Subject]
+) -> Department:
+    year_level_subjects = {year_level: subjects}
+    return Department(
+        prefix=prefix, year_level_subjects=year_level_subjects, year_level=year_level
+    )
+
+
+def create_block(
+    block_num: str, department: Department, year_level: YearLevel
+) -> Block:
+    return Block(block_num, department, year_level)
+
+
 if __name__ == "__main__":
     sir_uly = Instructor("Sir Ulysses Monsale")
     maam_lou = Instructor("Ma'am Louella Salenga")
@@ -788,7 +810,7 @@ if __name__ == "__main__":
         ["SJH-506", RoomType.LAB],
     ]
 
-    dept = Department("CS", {YearLevel.THIRD: subjects})
+    dept = Department("CS", {YearLevel.THIRD: subjects}, YearLevel.THIRD)
 
     rooms = [Room(room_num, room_type) for room_num, room_type in ROOMS]
 

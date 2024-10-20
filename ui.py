@@ -6,6 +6,8 @@ import main_rewrite as mr
 instructor_obj = []
 subject_obj = []
 room_obj = []
+dept_obj = []
+block_obj = []
 
 
 def main(page: ft.Page):
@@ -13,9 +15,13 @@ def main(page: ft.Page):
     instructor_name_field = ft.TextField(label="Instructor Name")
     subject_name_field = ft.TextField(label="Subject Name")
     room_number_field = ft.TextField(label="Room Number")
+    block_number_field = ft.TextField(label="Block Number")
 
     instructor_checkboxes_view = ft.ListView()
+    subject_checkboxes_view = ft.ListView()
+
     instructor_checkboxes = []
+    subject_checkboxes = []
 
     subject_type_dropdown = ft.Dropdown(
         options=[
@@ -23,7 +29,7 @@ def main(page: ft.Page):
             ft.dropdown.Option("SPECIALIZED_LAB"),
             ft.dropdown.Option("GENERAL_EDUCATION"),
         ],
-        label="Subject Type",
+        label="Select Subject Type",
     )
 
     room_type_dropdown = ft.Dropdown(
@@ -31,12 +37,37 @@ def main(page: ft.Page):
             ft.dropdown.Option("LAB"),
             ft.dropdown.Option("LECTURE"),
         ],
-        label="Room Type",
+        label="Select Room Type",
     )
+
+    course_dropdown = ft.Dropdown(
+        options=[
+            ft.dropdown.Option("CS"),
+            ft.dropdown.Option("WD"),
+            ft.dropdown.Option("NA"),
+            ft.dropdown.Option("EMC"),
+            ft.dropdown.Option("CYB"),
+        ],
+        label="Select Course",
+    )
+
+    year_level_dropdown = ft.Dropdown(
+        options=[
+            ft.dropdown.Option("FIRST"),
+            ft.dropdown.Option("SECOND"),
+            ft.dropdown.Option("THIRD"),
+            ft.dropdown.Option("FOURTH"),
+        ],
+        label="Select Year Level",
+    )
+
+    department_dropdown = ft.Dropdown(options=[], label="Select Department")
 
     instructor_list_view = ft.ListView()
     subject_list_view = ft.ListView()
     room_list_view = ft.ListView()
+    dept_list_view = ft.ListView()
+    block_list_view = ft.ListView()
 
     # ######### NAVIGATION ############
     # Navigation to create subjects page
@@ -47,6 +78,14 @@ def main(page: ft.Page):
     def go_to_create_rooms(e):
         page.views.append(create_room_view)
         page.go("/create_room")
+
+    def go_to_create_departments(e):
+        page.views.append(create_depts_view)
+        page.go("/create_dept")
+
+    def go_to_create_block(e):
+        page.views.append(create_block_view)
+        page.go("/create_block")
 
     def go_back_to_instructors(e):
         page.views.pop()
@@ -62,9 +101,6 @@ def main(page: ft.Page):
         instructor_checkboxes.clear()
 
         for instructor in instructor_obj:
-            # instructor_checkboxes_view.controls.append(
-            #     ft.Checkbox(label=instructor.get_name())
-            # )
             instructor_checkboxes.append(ft.Checkbox(label=instructor.get_name()))
 
         instructor_checkboxes_view.controls.extend(instructor_checkboxes)
@@ -72,6 +108,22 @@ def main(page: ft.Page):
         page.update()
 
         return instructor_checkboxes_view
+
+    def create_dept_view():
+        page.update()
+
+        # instructor_obj should not be empty if an instructor is added
+        subject_checkboxes_view.controls.clear()
+        subject_checkboxes.clear()
+
+        for subject in subject_obj:
+            subject_checkboxes.append(ft.Checkbox(label=subject.get_subject_name()))
+
+        subject_checkboxes_view.controls.extend(subject_checkboxes)
+
+        page.update()
+
+        return subject_checkboxes_view
 
     # Function to add an instructor
     def add_instructor(e):
@@ -177,6 +229,9 @@ def main(page: ft.Page):
         print(subject._subject_type)
         subject_obj.append(subject)
 
+        # update dept view when a subject is added
+        create_dept_view()
+
         # Add the created subject to the subject list view
         subject_list_view.controls.append(
             ft.Card(
@@ -195,19 +250,122 @@ def main(page: ft.Page):
             checkbox.value = False
         page.update()
 
+    def add_dept(e):
+        if not course_dropdown.value:
+            page.snack_bar = ft.SnackBar(content=ft.Text("Please select a course!"))
+            page.snack_bar.open = True
+            page.update()
+            return
+        if not year_level_dropdown.value:
+            page.snack_bar = ft.SnackBar(content=ft.Text("Please select a year level!"))
+            page.snack_bar.open = True
+            page.update()
+            return
+
+        # Gather selected instructors
+        selected_subjects = [
+            subject_obj[i]
+            for i, checkbox in enumerate(subject_checkboxes)
+            if checkbox.value
+        ]
+
+        if not selected_subjects:
+            page.snack_bar = ft.SnackBar(
+                content=ft.Text("Please select at least one subject!")
+            )
+            page.snack_bar.open = True
+            page.update()
+            return
+
+        prefix = course_dropdown.value
+        year_level = getattr(mr.YearLevel, year_level_dropdown.value)
+
+        dept = mr.create_dept(prefix, year_level, selected_subjects)
+
+        print(year_level.name)
+        dept_obj.append(dept)
+
+        dept_list_view.controls.append(
+            ft.Card(
+                ft.ListTile(
+                    title=ft.Text(
+                        f"{dept.get_prefix()} - {year_level.name} - {[subject.get_subject_name() for subject in selected_subjects]}"
+                    )
+                )
+            )
+        )
+
+        department_dropdown.options = [
+            ft.dropdown.Option(
+                str(i), text=f"{dept.get_prefix()} - {dept.get_year_level().name}"
+            )
+            for i, dept in enumerate(dept_obj)
+        ]
+
+        # Reset input fields
+        course_dropdown.value = None
+        year_level_dropdown.value = None
+        for checkbox in subject_checkboxes:
+            checkbox.value = False
+        page.update()
+
+    # Function to add a block
+    def add_block(e):
+        if not block_number_field.value:
+            page.snack_bar = ft.SnackBar(
+                content=ft.Text("Block number cannot be blank!")
+            )
+            page.snack_bar.open = True
+            page.update()
+            return
+        if not department_dropdown.value:
+            page.snack_bar = ft.SnackBar(content=ft.Text("Please select a department!"))
+            page.snack_bar.open = True
+            page.update()
+            return
+
+        block_number = block_number_field.value
+        selected_index = department_dropdown.value
+
+        # Get the selected department object using the index
+        selected_dept = dept_obj[int(selected_index)]
+
+        # Create block and append it to the list
+        block = mr.create_block(
+            block_number, selected_dept.get_prefix(), selected_dept.get_year_level()
+        )
+        block_obj.append(block)
+
+        # Display the added block
+        block_list_view.controls.append(
+            ft.Card(
+                ft.ListTile(
+                    title=ft.Text(
+                        f"Block {block.get_block_num()} - {selected_dept.get_prefix()} Year {selected_dept.get_year_level()}"
+                    )
+                )
+            )
+        )
+
+        # Reset fields
+        block_number_field.value = ""
+        department_dropdown.value = None
+        year_level_dropdown.value = None
+        page.update()
+
     # Views for creating subjects and instructors
     create_subjects_view = ft.View(
         "/create_subjects",
         controls=[
             ft.SafeArea(
-                ft.ListView(
+                ft.Column(
                     controls=[
                         ft.Text(
                             "SchedTool",
                             style=ft.TextStyle(size=24, weight=ft.FontWeight.BOLD),
                         ),
                         ft.Text(
-                            "Step 2 of 5",
+                            "Step 2 of 6",
                             style=ft.TextStyle(color=ft.colors.GREY),
                         ),
                         ft.Container(height=16),
@@ -228,8 +386,6 @@ def main(page: ft.Page):
                                 ft.ElevatedButton(
                                     text="Add Subject",
                                     on_click=add_subject,
-                                    width=150,
-                                    height=35,
                                 ),
                             ]
                         ),
@@ -240,7 +396,6 @@ def main(page: ft.Page):
                         ft.Container(height=16),
                         ft.Row(
                             controls=[
-                                ft.Container(width=16),
                                 ft.ElevatedButton(
                                     text="Previous",
                                     on_click=go_back_to_instructors,
@@ -254,7 +409,6 @@ def main(page: ft.Page):
                                     width=80,
                                     height=35,
                                 ),
-                                ft.Container(width=16),
                             ]
                         ),
                     ]
@@ -266,19 +420,19 @@ def main(page: ft.Page):
 
     create_subjects_view.scroll = ft.ScrollMode.ALWAYS
 
-    # Views for creating subjects and instructors
+    # Views for rooms
     create_room_view = ft.View(
         "/create_room",
         controls=[
             ft.SafeArea(
-                ft.ListView(
+                ft.Column(
                     controls=[
                         ft.Text(
                             "SchedTool",
                             style=ft.TextStyle(size=24, weight=ft.FontWeight.BOLD),
                         ),
                         ft.Text(
-                            "Step 3 of 5",
+                            "Step 3 of 6",
                             style=ft.TextStyle(color=ft.colors.GREY),
                         ),
                         ft.Container(height=16),
@@ -307,21 +461,15 @@ def main(page: ft.Page):
                         ft.Container(height=8),
                         ft.Row(
                             controls=[
-                                ft.Container(width=16),
                                 ft.ElevatedButton(
                                     text="Previous",
                                     on_click=go_back_to_instructors,
-                                    width=120,
-                                    height=35,
                                 ),
                                 ft.Container(expand=True, expand_loose=True),
                                 ft.ElevatedButton(
                                     text="Next",
-                                    on_click=go_to_create_rooms,
-                                    width=80,
-                                    height=35,
+                                    on_click=go_to_create_departments,
                                 ),
-                                ft.Container(width=16),
                             ]
                         ),
                     ]
@@ -330,22 +478,140 @@ def main(page: ft.Page):
             )
         ],
     )
-
     create_room_view.scroll = ft.ScrollMode.ALWAYS
+
+    # Views for department
+    create_depts_view = ft.View(
+        "/create_dept",
+        controls=[
+            ft.SafeArea(
+                ft.Column(
+                    controls=[
+                        ft.Text(
+                            "SchedTool",
+                            style=ft.TextStyle(size=24, weight=ft.FontWeight.BOLD),
+                        ),
+                        ft.Text(
+                            "Step 4 of 6",
+                            style=ft.TextStyle(color=ft.colors.GREY),
+                        ),
+                        ft.Container(height=16),
+                        ft.Text(
+                            "Create Department",
+                            style=ft.TextStyle(weight=ft.FontWeight.BOLD),
+                        ),
+                        ft.Container(height=8),
+                        course_dropdown,
+                        ft.Container(height=8),
+                        year_level_dropdown,
+                        ft.Container(height=8),
+                        ft.Text("Select Subjects:"),
+                        create_dept_view(),  # This will dynamically generate the checkboxes
+                        ft.Row(
+                            controls=[
+                                ft.ElevatedButton(
+                                    text="Add Department",
+                                    on_click=add_dept,
+                                ),
+                            ]
+                        ),
+                        ft.Container(height=8),
+                        ft.Text("Added Departments:"),
+                        dept_list_view,
+                        ft.Row(
+                            controls=[
+                                ft.ElevatedButton(
+                                    text="Previous",
+                                    on_click=go_back_to_instructors,
+                                ),
+                                ft.Container(expand=True, expand_loose=True),
+                                ft.ElevatedButton(
+                                    text="Next",
+                                    on_click=go_to_create_block,
+                                ),
+                            ]
+                        ),
+                    ]
+                ),
+                minimum_padding=32,
+            )
+        ],
+    )
+    create_depts_view.scroll = ft.ScrollMode.ALWAYS
+
+    # Views for block
+    create_block_view = ft.View(
+        "/create_block",
+        controls=[
+            ft.SafeArea(
+                ft.Column(
+                    controls=[
+                        ft.Text(
+                            "SchedTool",
+                            style=ft.TextStyle(size=24, weight=ft.FontWeight.BOLD),
+                        ),
+                        ft.Text(
+                            "Step 5 of 6",
+                            style=ft.TextStyle(color=ft.colors.GREY),
+                        ),
+                        ft.Container(height=16),
+                        ft.Text(
+                            "Create Block",
+                            style=ft.TextStyle(weight=ft.FontWeight.BOLD),
+                        ),
+                        ft.Container(height=8),
+                        block_number_field,
+                        ft.Container(height=8),
+                        department_dropdown,
+                        ft.Container(height=8),
+                        ft.Row(
+                            controls=[
+                                ft.ElevatedButton(
+                                    text="Add Block",
+                                    on_click=add_block,
+                                    width=120,
+                                    height=40,
+                                ),
+                            ]
+                        ),
+                        ft.Container(height=8),
+                        ft.Text("Added Blocks:"),
+                        block_list_view,
+                        ft.Container(height=8),
+                        ft.Row(
+                            controls=[
+                                ft.ElevatedButton(
+                                    text="Previous",
+                                    on_click=go_back_to_instructors,
+                                ),
+                                ft.Container(expand=True, expand_loose=True),
+                                ft.ElevatedButton(
+                                    text="Next",
+                                    on_click=go_to_create_departments,
+                                ),
+                            ]
+                        ),
+                    ]
+                ),
+                minimum_padding=32,
+            )
+        ],
+    )
+    create_block_view.scroll = ft.ScrollMode.ALWAYS
 
     page.scroll = ft.ScrollMode.ALWAYS
 
     # Main page to add instructors
     page.add(
         ft.SafeArea(
-            ft.ListView(
+            ft.Column(
                 controls=[
                     ft.Text(
                         "SchedTool",
                         style=ft.TextStyle(size=24, weight=ft.FontWeight.BOLD),
                     ),
                     ft.Text(
-                        "Step 1 of 5",
+                        "Step 1 of 6",
                         style=ft.TextStyle(color=ft.colors.GREY),
                     ),
                     ft.Container(height=16),
@@ -355,14 +621,12 @@ def main(page: ft.Page):
                     ),
                     ft.Container(height=8),
                     instructor_name_field,
-                    ft.Container(height=16),
+                    ft.Container(height=8),
                     ft.Row(
                         controls=[
                             ft.ElevatedButton(
                                 text="Add Instructor",
                                 on_click=add_instructor,
-                                width=150,
-                                height=35,
                             ),
                         ]
                     ),
@@ -376,8 +640,6 @@ def main(page: ft.Page):
                             ft.ElevatedButton(
                                 text="Next",
                                 on_click=go_to_create_subjects,
-                                width=80,
-                                height=35,
                             ),
                         ]
                     ),
