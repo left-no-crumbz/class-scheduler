@@ -748,6 +748,14 @@ def create_intructor(name: str) -> Instructor:
     return Instructor(name)
 
 
+def create_subject(
+    name: str, instructors: list[Instructor], subject_type: SubjectType
+) -> Subject:
+    return Subject(
+        name=name, available_instructors=instructors, subject_type=subject_type
+    )
+
+
 if __name__ == "__main__":
     sir_uly = Instructor("Sir Ulysses Monsale")
     maam_lou = Instructor("Ma'am Louella Salenga")
