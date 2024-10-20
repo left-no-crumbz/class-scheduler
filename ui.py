@@ -1,3 +1,6 @@
+import os
+import time
+
 import flet as ft
 
 import main_rewrite as mr
@@ -16,6 +19,47 @@ def main(page: ft.Page):
     subject_name_field = ft.TextField(label="Subject Name")
     room_number_field = ft.TextField(label="Room Number")
     block_number_field = ft.TextField(label="Block Number")
+    population_size_field = ft.TextField(
+        label="Population Size", keyboard_type=ft.KeyboardType.NUMBER
+    )
+    subpopulation_size_field = ft.TextField(
+        label="Subpopulation Size", keyboard_type=ft.KeyboardType.NUMBER
+    )
+    migration_interval_field = ft.TextField(
+        label="Migration Interval", keyboard_type=ft.KeyboardType.NUMBER
+    )
+    generation_field = ft.TextField(
+        label="Number of Generations", keyboard_type=ft.KeyboardType.NUMBER
+    )
+
+    migration_rate_text = ft.Text()
+    elitism_rate_text = ft.Text()
+
+    migration_rate_text.value = "Migration Rate: 0.1"
+    elitism_rate_text.value = "Elitism Rate: 0.1"
+
+    def slider_changed_migration(e):
+        migration_rate_text.value = f"Migration Rate: {e.control.value}"
+        page.update()
+
+    def slider_changed_elitism(e):
+        elitism_rate_text.value = f"Elitism Rate: {e.control.value}"
+        page.update()
+
+    migration_rate_slider = ft.Slider(
+        min=0.1,
+        max=1,
+        divisions=100,
+        label="{value}%",
+        on_change=slider_changed_migration,
+    )
+    elitism_rate_slider = ft.Slider(
+        min=0.1,
+        max=1,
+        divisions=100,
+        label="{value}%",
+        on_change=slider_changed_elitism,
+    )
 
     instructor_checkboxes_view = ft.ListView()
     subject_checkboxes_view = ft.ListView()
@@ -87,11 +131,24 @@ def main(page: ft.Page):
         page.views.append(create_block_view)
         page.go("/create_block")
 
+    def go_to_create_config(e):
+        page.views.append(create_config_view)
+        page.go("/create_config")
+
     def go_back_to_instructors(e):
         page.views.pop()
         page.update()
 
     # ######### NAVIGATION ############
+
+    def check_images_available(block_count):
+        """Check if the generated schedule images are available."""
+        available_images = []
+        for i in range(1, block_count + 1):
+            image_path = f"./block{i}_schedule.png"
+            if os.path.exists(image_path):
+                available_images.append(image_path)
+        return available_images
 
     def create_subject_view():
         page.update()
@@ -332,7 +389,7 @@ def main(page: ft.Page):
 
         # Create block and append it to the list
         block = mr.create_block(
-            block_number, selected_dept.get_prefix(), selected_dept.get_year_level()
+            block_number, selected_dept, selected_dept.get_year_level()
         )
         block_obj.append(block)
 
@@ -352,6 +409,87 @@ def main(page: ft.Page):
         department_dropdown.value = None
         year_level_dropdown.value = None
         page.update()
+
+    def generate_schedule(e):
+        try:
+            # Ensure the fields are not None and convert to int
+            population_size = (
+                int(population_size_field.value) if population_size_field.value else 0
+            )
+            subpopulation_size = (
+                int(subpopulation_size_field.value)
+                if subpopulation_size_field.value
+                else 0
+            )
+            migration_interval = (
+                int(migration_interval_field.value)
+                if migration_interval_field.value
+                else 0
+            )
+            generations = int(generation_field.value) if generation_field.value else 0
+
+            # Ensure the slider values are not None and convert to float
+            migration_rate = (
+                float(migration_rate_slider.value)
+                if migration_rate_slider.value
+                else 0.1
+            )
+            elitism_rate = (
+                float(elitism_rate_slider.value) if elitism_rate_slider.value else 0.1
+            )
+
+            # Pass the values to your ImprovedGeneticAlgorithm class
+            ga = mr.ImprovedGeneticAlgorithm(
+                population_size=population_size,
+                blocks=block_obj,
+                rooms=room_obj,
+                fitness_limit=1,
+                num_subpopulations=subpopulation_size,
+                migration_interval=migration_interval,
+                migration_rate=migration_rate,
+                elitism_rate=elitism_rate,
+            )
+
+            evolution_history, elapsed_time, best_generation = ga.evolve(
+                generations=generations
+            )
+            print(evolution_history)
+            print(elapsed_time)
+            print(best_generation)
+            best_schedule = evolution_history[-1][1]  # Get the best schedule
+
+            for idx, block in enumerate(block_obj):
+                # best_schedule.print_block_schedule(block)
+                best_schedule.generate_visual_schedule(
+                    block, f"block{idx+1}_schedule.png"
+                )
+
+            # Simulate generation time
+            time.sleep(5)
+
+            # Check if the images are ready and hide loading widget
+            images = check_images_available(len(block_obj))
+            loading_indicator.visible = False
+
+            if images:
+                # Update UI to show images
+                images_container.controls.clear()
+                for img in images:
+                    images_container.controls.append(
+                        ft.Image(src=img, width=400, height=300)
+                    )
+                page.update()
+            else:
+                page.snack_bar = ft.SnackBar(content=ft.Text("No images found!"))
+                page.snack_bar.open = True
+                page.update()
+
+        except ValueError:
+            page.snack_bar = ft.SnackBar(
+                content=ft.Text("Please enter valid numeric values.")
+            )
+            page.snack_bar.open = True
+            page.update()
 
     # Views for creating subjects and instructors
     create_subjects_view = ft.View(
@@ -587,7 +725,7 @@ def main(page: ft.Page):
                                 ft.Container(expand=True, expand_loose=True),
                                 ft.ElevatedButton(
                                     text="Next",
-                                    on_click=go_to_create_departments,
+                                    on_click=go_to_create_config,
                                 ),
                             ]
                         ),
@@ -598,6 +736,79 @@ def main(page: ft.Page):
         ],
     )
     create_block_view.scroll = ft.ScrollMode.ALWAYS
+
+    loading_indicator = ft.ProgressRing(visible=False)  # Hidden by default
+    images_container = ft.Column()  # To show generated schedule images
+
+    # Views for config screen
+    create_config_view = ft.View(
+        "/create_config",
+        controls=[
+            ft.SafeArea(
+                ft.Column(
+                    controls=[
+                        ft.Text(
+                            "SchedTool",
+                            style=ft.TextStyle(size=24, weight=ft.FontWeight.BOLD),
+                        ),
+                        ft.Text(
+                            "Step 6 of 6",
+                            style=ft.TextStyle(color=ft.colors.GREY),
+                        ),
+                        ft.Container(height=16),
+                        ft.Text(
+                            "Create Config",
+                            style=ft.TextStyle(weight=ft.FontWeight.BOLD),
+                        ),
+                        ft.Container(height=8),
+                        population_size_field,
+                        ft.Container(height=8),
+                        subpopulation_size_field,
+                        ft.Container(height=8),
+                        migration_interval_field,
+                        ft.Container(height=8),
+                        migration_rate_text,
+                        ft.Container(height=4),
+                        migration_rate_slider,
+                        ft.Container(height=8),
+                        elitism_rate_text,
+                        ft.Container(height=4),
+                        elitism_rate_slider,
+                        ft.Container(height=8),
+                        generation_field,
+                        ft.Container(height=8),
+                        ft.Row(
+                            controls=[
+                                ft.ElevatedButton(
+                                    text="Generate Schedule",
+                                    on_click=generate_schedule,
+                                    width=120,
+                                    height=40,
+                                ),
+                            ]
+                        ),
+                        ft.Container(height=8),
+                        # Loading Indicator
+                        loading_indicator,
+                        # Image display container
+                        images_container,
+                        ft.Container(height=8),
+                        ft.Row(
+                            controls=[
+                                ft.ElevatedButton(
+                                    text="Previous",
+                                    on_click=go_back_to_instructors,
+                                ),
+                                ft.Container(expand=True, expand_loose=True),
+                            ]
+                        ),
+                    ]
+                ),
+                minimum_padding=32,
+            )
+        ],
+    )
+    create_config_view.scroll = ft.ScrollMode.ALWAYS
 
     page.scroll = ft.ScrollMode.ALWAYS
 
