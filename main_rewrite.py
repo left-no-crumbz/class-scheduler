@@ -756,6 +756,10 @@ def create_subject(
     )
 
 
+def create_room(room_num: str, room_type: RoomType) -> Room:
+    return Room(room_num=room_num, room_type=room_type)
+
+
 if __name__ == "__main__":
     sir_uly = Instructor("Sir Ulysses Monsale")
     maam_lou = Instructor("Ma'am Louella Salenga")
