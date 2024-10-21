@@ -38,6 +38,9 @@ def main(page: ft.Page):
     migration_rate_text.value = "Migration Rate: 0.1"
     elitism_rate_text.value = "Elitism Rate: 0.1"
 
+    loading_indicator = ft.ProgressRing(visible=False)
+    images_container = ft.Column()  # To show generated schedule images
+
     def slider_changed_migration(e):
         migration_rate_text.value = f"Migration Rate: {e.control.value}"
         page.update()
@@ -411,6 +414,10 @@ def main(page: ft.Page):
         page.update()
 
     def generate_schedule(e):
+        # Make the loading screen visible on press
+        loading_indicator.visible = True
+        page.update()
+
         try:
             # Ensure the fields are not None and convert to int
             population_size = (
@@ -737,9 +744,6 @@ def main(page: ft.Page):
     )
     create_block_view.scroll = ft.ScrollMode.ALWAYS
 
-    loading_indicator = ft.ProgressRing(visible=False)  # Hidden by default
-    images_container = ft.Column()  # To show generated schedule images
-
     # Views for config screen
     create_config_view = ft.View(
         "/create_config",
@@ -789,9 +793,17 @@ def main(page: ft.Page):
                         ),
                         ft.Container(height=8),
                         # Loading Indicator
-                        loading_indicator,
+                        ft.Row(
+                            alignment=ft.MainAxisAlignment.CENTER,
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                            controls=[loading_indicator],
+                        ),
                         # Image display container
-                        images_container,
+                        ft.Row(
+                            alignment=ft.MainAxisAlignment.CENTER,
+                            vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                            controls=[images_container],
+                        ),
                         ft.Container(height=8),
                         ft.Row(
                             controls=[

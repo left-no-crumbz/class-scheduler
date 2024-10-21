@@ -25,13 +25,6 @@ def generate_visual_schedule(schedule, block, filename="class_schedule.png"):
         font = ImageFont.load_default()
         title_font = ImageFont.load_default()
 
-    # Define colors
-    colors = ["#FFA07A", "#98FB98", "#87CEFA", "#DDA0DD", "#F0E68C"]
-
-    # Draw title
-    title = f"Class Schedule for {block.get_block_dept().get_prefix()}-{block.get_block_num()}"
-    draw.text((20, 20), title, font=title_font, fill="black")
-
     # Define grid
     days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
     times = [f"{h:02d}:00" for h in range(7, 22)]  # 7 AM to 9 PM
@@ -39,6 +32,21 @@ def generate_visual_schedule(schedule, block, filename="class_schedule.png"):
     cell_height = (height - 100) // (
         len(times) * 2
     )  # Divide each hour into two 30-minute slots
+
+    # Generate a unique color for each subject
+    subjects = set()
+    for day in schedule:
+        for _, _, subject, _ in schedule[day]:
+            subjects.add(subject)
+
+    # Assign a unique color to each subject
+    subject_colors = {
+        subject: f"#{random.randint(0, 0xFFFFFF):06x}" for subject in subjects
+    }
+
+    # Draw title
+    title = f"Class Schedule for {block.get_block_dept().get_prefix()}-{block.get_block_num()}"
+    draw.text((20, 20), title, font=title_font, fill="black")
 
     # Draw grid
     for i, day in enumerate(days):
@@ -67,7 +75,7 @@ def generate_visual_schedule(schedule, block, filename="class_schedule.png"):
             start_y = 80 + (start_minutes * cell_height) // 30
             end_y = 80 + (end_minutes * cell_height) // 30
 
-            color = random.choice(colors)
+            color = subject_colors[subject]
             draw.rectangle(
                 [
                     100 + day_index * cell_width,
@@ -79,7 +87,12 @@ def generate_visual_schedule(schedule, block, filename="class_schedule.png"):
                 outline="black",
             )
 
-            text = f"{subject.get_subject_name()}\n{room.get_room()}\n{start_time.strftime('%I:%M %p')}-{end_time.strftime('%I:%M %p')}"
+            text = (
+                f"{subject.get_subject_name()}\n"
+                f"{room.get_room()}\n"
+                f"{subject._instructor.get_name()}\n"  # Include instructor's name
+                f"{start_time.strftime('%I:%M %p')}-{end_time.strftime('%I:%M %p')}"
+            )
             draw.text(
                 (105 + day_index * cell_width, start_y + 5),
                 text,
@@ -801,7 +814,7 @@ if __name__ == "__main__":
     SOFTENG = Subject("SOFTENG", [maam_raquel, kyle], SubjectType.SPECIALIZED_LECTURE)
     ADET = Subject("ADET", [kyle, sir_uly], SubjectType.SPECIALIZED_LAB)
 
-    subjects = [IMODSIM, PROBSTAT, INTCALC, ATF, SOFTENG, PROBSTAT]
+    subjects = [IMODSIM, PROBSTAT, INTCALC, ATF, SOFTENG]
 
     ROOMS = [
         ["SJH-503", RoomType.LECTURE],
