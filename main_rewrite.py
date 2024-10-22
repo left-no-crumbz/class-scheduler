@@ -602,10 +602,8 @@ class ImprovedGeneticAlgorithm:
                 parent1._assignments[:midpoint] + parent2._assignments[midpoint:]
             )
         elif strategy == "multi_parent":
-            # Multi-parent crossover (example using 3 parents)
-            parent3 = random.choice(
-                self.subpopulations[0]
-            )  # Example of selecting an additional parent
+            # Multi-parent crossover
+            parent3 = random.choice(self.subpopulations[0])
             third_point = len(parent1._assignments) // 3
             child._assignments = (
                 parent1._assignments[:third_point]

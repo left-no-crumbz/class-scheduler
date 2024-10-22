@@ -1,5 +1,4 @@
 import os
-import time
 
 import flet as ft
 
@@ -187,6 +186,19 @@ def main(page: ft.Page):
 
     # Function to add an instructor
     def add_instructor(e):
+        def delete_instructor(instructor):
+            # Find the index of the instructor in instructor_obj
+            index = instructor_obj.index(instructor)
+
+            if index != -1:
+                # Remove the instructor from both instructor_obj and the visual list view
+                del instructor_obj[index]
+                del instructor_list_view.controls[index]
+                print(instructor_obj)
+                instructor_list_view.update()  # Update the list view to reflect changes
+                create_subject_view()
+                page.update()  # Update the page to reflect changes
+
         if not instructor_name_field.value:
             page.snack_bar = ft.SnackBar(
                 content=ft.Text("Instructor name cannot be blank!")
@@ -197,9 +209,22 @@ def main(page: ft.Page):
             instructor = mr.create_intructor(instructor_name_field.value)
             instructor_obj.append(instructor)
 
+            print(instructor_obj)
+
+            delete_button = ft.IconButton(
+                icon=ft.icons.DELETE,
+                icon_color="red",
+                on_click=lambda e, instructor=instructor: delete_instructor(instructor),
+            )
+
             # Update the instructor list view
             instructor_list_view.controls.append(
-                ft.Card(ft.ListTile(title=ft.Text(instructor_name_field.value)))
+                ft.Card(
+                    ft.ListTile(
+                        title=ft.Text(instructor_name_field.value),
+                        trailing=delete_button,
+                    )
+                )
             )
 
             # Update the checkboxes after adding a new instructor
@@ -210,6 +235,16 @@ def main(page: ft.Page):
 
     # Function to add a room
     def add_room(e):
+        def delete_room(room):
+            index = room_obj.index(room)
+
+            if index != -1:
+                del room_obj[index]
+                del room_list_view.controls[index]
+                print(room_obj)
+                room_list_view.update()
+                page.update()
+
         if not room_number_field.value:
             page.snack_bar = ft.SnackBar(
                 content=ft.Text("Room number cannot be blank!")
@@ -229,13 +264,22 @@ def main(page: ft.Page):
 
             room_obj.append(room)
 
+            print(room_obj)
+
+            delete_button = ft.IconButton(
+                icon=ft.icons.DELETE,
+                icon_color="red",
+                on_click=lambda e, room=room: delete_room(room),
+            )
+
             # Update the instructor list view
             room_list_view.controls.append(
                 ft.Card(
                     ft.ListTile(
                         title=ft.Text(
                             f"{room.get_room()} - {room.get_room_type().name}"
-                        )
+                        ),
+                        trailing=delete_button,
                     )
                 )
             )
@@ -246,6 +290,17 @@ def main(page: ft.Page):
 
     # Function to add a subject
     def add_subject(e):
+        def delete_subject(subject):
+            index = subject_obj.index(subject)
+
+            if index != -1:
+                del subject_obj[index]
+                del subject_list_view.controls[index]
+                print(subject_obj)
+                subject_list_view.update()
+                create_dept_view()
+                page.update()
+
         if not subject_name_field.value:
             page.snack_bar = ft.SnackBar(
                 content=ft.Text("Subject name cannot be blank!")
@@ -289,6 +344,14 @@ def main(page: ft.Page):
         print(subject._subject_type)
         subject_obj.append(subject)
 
+        print(subject_obj)
+
+        delete_button = ft.IconButton(
+            icon=ft.icons.DELETE,
+            icon_color="red",
+            on_click=lambda e, subject=subject: delete_subject(subject),
+        )
+
         # update dept view when a subject is added
         create_dept_view()
 
@@ -298,7 +361,8 @@ def main(page: ft.Page):
                 ft.ListTile(
                     title=ft.Text(
                         f"{subject_name_field.value} - {[instructor.get_name() for instructor in subject.get_subject_instructors()]} - {subject._subject_type.name}"
-                    )
+                    ),
+                    trailing=delete_button,
                 )
             )
         )
@@ -311,6 +375,26 @@ def main(page: ft.Page):
         page.update()
 
     def add_dept(e):
+        def delete_dept(dept):
+            index = dept_obj.index(dept)
+
+            if index != -1:
+                del dept_obj[index]
+                del dept_list_view.controls[index]
+                print(dept_obj)
+                dept_list_view.update()
+
+                department_dropdown.options = [
+                    ft.dropdown.Option(
+                        str(i),
+                        text=f"{dept.get_prefix()} - {dept.get_year_level().name}",
+                    )
+                    for i, dept in enumerate(dept_obj)
+                ]
+
+                department_dropdown.update()
+                page.update()
+
         if not course_dropdown.value:
             page.snack_bar = ft.SnackBar(content=ft.Text("Please select a course!"))
             page.snack_bar.open = True
@@ -345,12 +429,21 @@ def main(page: ft.Page):
         print(year_level.name)
         dept_obj.append(dept)
 
+        print(dept_obj)
+
+        delete_button = ft.IconButton(
+            icon=ft.icons.DELETE,
+            icon_color="red",
+            on_click=lambda e, dept=dept: delete_dept(dept),
+        )
+
         dept_list_view.controls.append(
             ft.Card(
                 ft.ListTile(
                     title=ft.Text(
                         f"{dept.get_prefix()} - {year_level.name} - {[subject.get_subject_name() for subject in selected_subjects]}"
-                    )
+                    ),
+                    trailing=delete_button,
                 )
             )
         )
@@ -371,6 +464,16 @@ def main(page: ft.Page):
 
     # Function to add a block
     def add_block(e):
+        def delete_block(block):
+            index = block_obj.index(block)
+
+            if index != -1:
+                del block_obj[index]
+                del block_list_view.controls[index]
+                print(block_obj)
+                block_list_view.update()
+                page.update()
+
         if not block_number_field.value:
             page.snack_bar = ft.SnackBar(
                 content=ft.Text("Block number cannot be blank!")
@@ -396,13 +499,21 @@ def main(page: ft.Page):
         )
         block_obj.append(block)
 
+        print(block_obj)
+
+        delete_button = ft.IconButton(
+            icon=ft.icons.DELETE,
+            icon_color="red",
+            on_click=lambda e, block=block: delete_block(block),
+        )
         # Display the added block
         block_list_view.controls.append(
             ft.Card(
                 ft.ListTile(
                     title=ft.Text(
                         f"Block {block.get_block_num()} - {selected_dept.get_prefix()} Year {selected_dept.get_year_level()}"
-                    )
+                    ),
+                    trailing=delete_button,
                 )
             )
         )
@@ -414,6 +525,10 @@ def main(page: ft.Page):
         page.update()
 
     def generate_schedule(e):
+        # when generate schedule is pressed again, clear it
+        if len(images_container.controls) != 0:
+            images_container.controls.clear()
+
         # Make the loading screen visible on press
         loading_indicator.visible = True
         page.update()
@@ -470,9 +585,6 @@ def main(page: ft.Page):
                 best_schedule.generate_visual_schedule(
                     block, f"block{idx+1}_schedule.png"
                 )
-
-            # Simulate generation time
-            time.sleep(5)
 
             # Check if the images are ready and hide loading widget
             images = check_images_available(len(block_obj))
