@@ -353,7 +353,6 @@ class Schedule:
                         # Fallback, should rarely happen
                         day = random.choice(list(Day))
 
-                    # Use the schedule_subject helper function to handle room assignment, time generation, and schedule assignment
                     self.schedule_subject(block, subject, day, scheduled_days)
 
     def calculate_fitness(self):
